@@ -1,0 +1,235 @@
+{
+  "results": [
+    {
+      "problem": "affine-cipher",
+      "ok": true,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "beer-song",
+      "ok": true,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "book-store",
+      "ok": true,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "bottle-song",
+      "ok": true,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "bowling",
+      "ok": true,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "connect",
+      "ok": true,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "dominoes",
+      "ok": true,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "dot-dsl",
+      "ok": true,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "food-chain",
+      "ok": true,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "forth",
+      "ok": true,
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "go-counting",
+      "ok": true,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "grade-school",
+      "ok": true,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "grep",
+      "ok": true,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "hangman",
+      "ok": true,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "list-ops",
+      "ok": true,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "phone-number",
+      "ok": true,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "pig-latin",
+      "ok": true,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "poker",
+      "ok": true,
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "pov",
+      "ok": true,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "proverb",
+      "ok": true,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "react",
+      "ok": true,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "rest-api",
+      "ok": true,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "robot-name",
+      "ok": true,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "scale-generator",
+      "ok": true,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "sgf-parsing",
+      "ok": true,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "simple-linked-list",
+      "ok": true,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "transpose",
+      "ok": true,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "tree-building",
+      "ok": true,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "two-bucket",
+      "ok": true,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "variable-length-quantity",
+      "ok": true,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "wordy",
+      "ok": true,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "zebra-puzzle",
+      "ok": true,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "problem": "zipper",
+      "ok": true,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    }
+  ]
+}
