@@ -464,7 +464,7 @@ def _phone_number_minimal() -> str:
         "    def __init__(self, raw: str):\n"
         "        if any(c.isalpha() for c in raw):\n            raise ValueError('letters not permitted')\n"
         "        if any(c in '@:!' for c in raw):\n            raise ValueError('punctuations not permitted')\n"
-        "        digits = re.sub(r'\D', '', raw)\n"
+        "        digits = re.sub(r'\\D', '', raw)\n"
         "        if len(digits) < 10:\n            raise ValueError('must not be fewer than 10 digits')\n"
         "        if len(digits) > 11:\n            raise ValueError('must not be greater than 11 digits')\n"
         "        if len(digits) == 11:\n"
