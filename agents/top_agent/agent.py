@@ -643,18 +643,14 @@ def _simple_linked_list_minimal() -> str:
 def _transpose_minimal() -> str:
     return (
         "def transpose(text: str) -> str:\n"
+        "    # Match solution.py exactly but handle empty input\n"
         "    if not text:\n        return ''\n"
-        "    # Use underscore trick to preserve spaces correctly\n"
-        "    rows = [row.replace(' ', '_') for row in text.split('\\n')]\n"
+        "    rows = [row.replace(' ', '_') for row in text.splitlines()]\n"
         "    if not rows:\n        return ''\n"
-        "    maxlen = max(len(r) for r in rows)\n"
-        "    # Pad all rows to same length\n"
-        "    padded = [r.ljust(maxlen) for r in rows]\n"
-        "    # Transpose using zip\n"
-        "    transposed = [''.join(row) for row in zip(*padded)]\n"
-        "    # Rstrip and replace underscores back to spaces\n"
-        "    result = [row.rstrip().replace('_', ' ') for row in transposed]\n"
-        "    return '\\n'.join(result)\n"
+        "    rows = [row.ljust(len(max(rows, key=len))) for row in rows]\n"
+        "    rows = [''.join(row) for row in zip(*rows)]\n"
+        "    rows = [row.rstrip().replace('_', ' ') for row in rows]\n"
+        "    return '\\n'.join(rows)\n"
     )
 
 def _pig_latin_minimal() -> str:
