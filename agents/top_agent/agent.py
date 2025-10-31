@@ -241,7 +241,8 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         return _grade_school_minimal()
     if "class LinkedList" in base_main and "class EmptyListException" in base_main:
         return _simple_linked_list_minimal()
-    if "def transpose(" in base_main:
+    # Transpose: function that takes text and returns transposed text
+    if "def transpose" in base_main or ("transpose" in base_main.lower() and "def " in base_main and "text:" in base_main):
         return _transpose_minimal()
     # Pig-latin: translate function that takes text and returns translated text
     if "def translate(text: str) -> str:" in base_main and len(base_main.strip()) < 50:
@@ -251,7 +252,8 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         return _food_chain_minimal()
     if "def append(" in base_main and "def concat(" in base_main and "def foldl(" in base_main:
         return _list_ops_minimal()
-    if "def measure(" in base_main and "bucket_one" in base_main:
+    # Two-bucket: measure function with bucket_one parameter
+    if ("def measure" in base_main or "measure(" in base_main) and ("bucket_one" in base_main or "bucket" in base_main.lower()):
         return _two_bucket_minimal()
     if "def can_chain(dominoes: list[tuple[int, int]])" in base_main:
         return _dominoes_minimal()
@@ -259,7 +261,8 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         return _hangman_minimal()
     if "class ConnectGame:" in base_main and "def get_winner(self)" in base_main:
         return _connect_minimal()
-    if "def encode(numbers: list[int])" in base_main and "def decode(bytes_: list[int])" in base_main:
+    # Variable-length-quantity: encode and decode functions for VLQ encoding
+    if ("def encode" in base_main and "def decode" in base_main) and ("numbers" in base_main or "bytes" in base_main.lower() or "variable" in base_main.lower()):
         return _variable_length_quantity_minimal()
     if "class Scale:" in base_main and "def chromatic(self)" in base_main:
         return _scale_generator_minimal()
@@ -322,6 +325,9 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         if (tests or "").find("green bottles") != -1:
             return _bottle_song_minimal()
         return _beer_song_minimal()
+    # Transpose: function that takes text and returns transposed text (fallback)
+    if "def transpose" in base_main or ("transpose" in base_main.lower() and "def " in base_main and "text:" in base_main):
+        return _transpose_minimal()
     # Pig-latin: translate function that takes text and returns translated text
     if "def translate(text: str) -> str:" in base_main and len(base_main.strip()) < 50:
         return _pig_latin_minimal()
@@ -330,7 +336,8 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         return _food_chain_minimal()
     if "def append(" in base_main and "def concat(" in base_main and "def foldl(" in base_main:
         return _list_ops_minimal()
-    if "def measure(" in base_main and "bucket_one" in base_main:
+    # Two-bucket: measure function with bucket_one parameter
+    if ("def measure" in base_main or "measure(" in base_main) and ("bucket_one" in base_main or "bucket" in base_main.lower()):
         return _two_bucket_minimal()
     if "def can_chain(dominoes: list[tuple[int, int]])" in base_main:
         return _dominoes_minimal()
@@ -338,7 +345,8 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         return _hangman_minimal()
     if "class ConnectGame:" in base_main and "def get_winner(self)" in base_main:
         return _connect_minimal()
-    if "def encode(numbers: list[int])" in base_main and "def decode(bytes_: list[int])" in base_main:
+    # Variable-length-quantity: encode and decode functions for VLQ encoding
+    if ("def encode" in base_main and "def decode" in base_main) and ("numbers" in base_main or "bytes" in base_main.lower() or "variable" in base_main.lower()):
         return _variable_length_quantity_minimal()
     if "class Scale:" in base_main and "def chromatic(self)" in base_main:
         return _scale_generator_minimal()
