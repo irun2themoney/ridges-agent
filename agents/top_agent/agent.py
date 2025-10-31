@@ -86,6 +86,123 @@ def _get_file_content(repo_snapshot: List[Tuple[str, str]], endswith: str) -> Op
     return None
 
 
+def _parse_problem_statement(problem_statement: str) -> dict:
+    """Parse problem statement to extract file paths, function names, and error messages."""
+    import re
+    
+    result = {
+        "file_paths": [],
+        "function_names": [],
+        "class_names": [],
+        "error_messages": [],
+        "keywords": []
+    }
+    
+    # Extract file paths (e.g., "sphinx/ext/autodoc/__init__.py" or "django/core/servers/basehttp.py")
+    file_patterns = [
+        r'([a-zA-Z_][a-zA-Z0-9_]*/[a-zA-Z0-9_/]+\.py)',  # path/to/file.py
+        r'`([a-zA-Z_][a-zA-Z0-9_]*/[a-zA-Z0-9_/]+\.py)`',  # `path/to/file.py`
+        r'"([a-zA-Z_][a-zA-Z0-9_]*/[a-zA-Z0-9_/]+\.py)"',  # "path/to/file.py"
+    ]
+    for pattern in file_patterns:
+        matches = re.findall(pattern, problem_statement)
+        result["file_paths"].extend(matches)
+    
+    # Extract function names (e.g., "get_object_members" or "def get_object_members")
+    func_patterns = [
+        r'def\s+([a-zA-Z_][a-zA-Z0-9_]*)',  # def function_name
+        r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\(',  # function_name(
+        r'([a-zA-Z_][a-zA-Z0-9_]*)\(',  # function_name(
+    ]
+    for pattern in func_patterns:
+        matches = re.findall(pattern, problem_statement)
+        result["function_names"].extend(matches)
+    
+    # Extract class names (e.g., "ThreadedWSGIServer" or "class ThreadedWSGIServer")
+    class_patterns = [
+        r'class\s+([a-zA-Z_][a-zA-Z0-9_]*)',  # class ClassName
+        r'([A-Z][a-zA-Z0-9_]*)\s*\([A-Z]',  # ClassName(
+    ]
+    for pattern in class_patterns:
+        matches = re.findall(pattern, problem_statement)
+        result["class_names"].extend(matches)
+    
+    # Extract error messages (e.g., "OperationalError: database...")
+    error_patterns = [
+        r'([A-Z][a-zA-Z]*Error[^:]*:[^\.]+)',  # ErrorType: message
+        r'([A-Z][a-zA-Z]*Exception[^:]*:[^\.]+)',  # ExceptionType: message
+    ]
+    for pattern in error_patterns:
+        matches = re.findall(pattern, problem_statement)
+        result["error_messages"].extend(matches)
+    
+    # Extract keywords (common terms that might indicate relevant files)
+    keywords = []
+    common_keywords = ['test', 'server', 'connection', 'marker', 'mark', 'autodoc', 'thread', 'database', 'import']
+    for keyword in common_keywords:
+        if keyword.lower() in problem_statement.lower():
+            keywords.append(keyword)
+    result["keywords"] = keywords
+    
+    # Remove duplicates
+    result["file_paths"] = list(set(result["file_paths"]))
+    result["function_names"] = list(set(result["function_names"]))
+    result["class_names"] = list(set(result["class_names"]))
+    result["error_messages"] = list(set(result["error_messages"]))
+    result["keywords"] = list(set(result["keywords"]))
+    
+    return result
+
+
+def _find_relevant_files(repo_snapshot: List[Tuple[str, str]], parsed_info: dict) -> List[str]:
+    """Find relevant files based on parsed problem statement info."""
+    relevant = []
+    scores = {}
+    
+    # Score files based on relevance
+    for path, content in repo_snapshot:
+        if not path.endswith('.py'):
+            continue
+        
+        score = 0
+        rel_path = os.path.relpath(path, "/sandbox/repo")
+        
+        # Check if file path matches
+        for file_path in parsed_info["file_paths"]:
+            if file_path in rel_path or rel_path.endswith(file_path):
+                score += 100  # Very high priority
+                break
+        
+        # Check if file contains function names
+        for func_name in parsed_info["function_names"]:
+            if func_name in content:
+                score += 20
+        
+        # Check if file contains class names
+        for class_name in parsed_info["class_names"]:
+            if class_name in content:
+                score += 20
+        
+        # Check if file contains keywords
+        content_lower = content.lower()
+        for keyword in parsed_info["keywords"]:
+            if keyword.lower() in content_lower:
+                score += 10
+        
+        # Check if it's a test file (always relevant)
+        if 'test' in rel_path.lower():
+            score += 30
+        
+        if score > 0:
+            scores[path] = score
+    
+    # Sort by score and return top files
+    sorted_files = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    relevant = [path for path, _ in sorted_files[:15]]  # Top 15 most relevant
+    
+    return relevant
+
+
 def propose_changes(problem_statement: str, repo_snapshot: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     tree_lines = []
     for p, _ in repo_snapshot:
@@ -147,42 +264,109 @@ def propose_changes(problem_statement: str, repo_snapshot: List[Tuple[str, str]]
         "role": "system",
         "content": system_content,
     }
+    
+    # Initialize parsed_info and info_summary for both Polyglot and SWE-bench
+    parsed_info = {}
+    info_summary = ""
+    
     # Include more relevant files for SWE-bench problems
     if not is_polyglot:
-        # For SWE-bench, try to include test files and relevant source files
+        # Parse problem statement to extract file paths, function names, etc.
+        parsed_info = _parse_problem_statement(problem_statement)
+        
+        # Find relevant files based on parsed info
+        relevant_files = _find_relevant_files(repo_snapshot, parsed_info)
+        
+        # Always include test files (up to 5)
         test_files = [p for p, _ in repo_snapshot if 'test' in p.lower() and p.endswith('.py')]
-        # Find source files by checking snapshot directly
-        source_files = []
-        for p, content in repo_snapshot:
-            if p.endswith('.py') and p not in consider and 'test' not in p.lower():
-                if len(content) < 10000:  # Only include reasonably-sized files
-                    source_files.append(p)
-        # Add test files and some source files to context
-        extra_files = test_files[:3] + [p for p in source_files[:2]]
-        for p in extra_files:
+        test_files = test_files[:5]
+        
+        # Combine relevant files with test files, avoiding duplicates
+        all_files = list(set(relevant_files + test_files))
+        
+        # Prioritize smaller files for full context, larger files get excerpts
+        prioritized_files = []
+        for p in all_files:
             if p not in consider:
-                # Get content from snapshot
                 content = None
                 for sp, sc in repo_snapshot:
                     if sp == p:
                         content = sc
                         break
                 if content:
-                    rel = os.path.relpath(p, "/sandbox/repo")
-                    excerpt = content[:8000]
-                    files_excerpt.append(f"--- {rel} ---\n{excerpt}")
+                    # Prioritize files that are mentioned in problem or are small
+                    is_mentioned = any(fp in os.path.relpath(p, "/sandbox/repo") for fp in parsed_info["file_paths"])
+                    file_size = len(content)
+                    
+                    if is_mentioned or file_size < 8000:
+                        prioritized_files.append((p, content, True))  # Include full/more content
+                    else:
+                        prioritized_files.append((p, content, False))  # Include excerpt
+        
+        # Sort: mentioned files first, then by size (smaller first)
+        prioritized_files.sort(key=lambda x: (
+            not any(fp in os.path.relpath(x[0], "/sandbox/repo") for fp in parsed_info["file_paths"]),
+            len(x[1])
+        ))
+        
+        # Add up to 10 files to context (5-10 for better understanding)
+        added_count = 0
+        max_files = 10
+        
+        for p, content, include_more in prioritized_files:
+            if added_count >= max_files:
+                break
+            
+            rel = os.path.relpath(p, "/sandbox/repo")
+            
+            # Include more content for key files (12000-15000 chars), less for others (8000)
+            if include_more:
+                excerpt_length = min(15000, len(content))  # Up to 15k chars for key files
+            else:
+                excerpt_length = min(12000, len(content))  # Up to 12k chars for other files
+            
+            excerpt = content[:excerpt_length]
+            if len(content) > excerpt_length:
+                excerpt += f"\n... (truncated, {len(content)} chars total)"
+            
+            files_excerpt.append(f"--- {rel} ---\n{excerpt}")
+            added_count += 1
+        
         files_blob = "\n\n".join(files_excerpt)
+        
+        # Add parsed info summary to prompt for better guidance
+        if parsed_info.get("file_paths"):
+            info_summary += f"Files mentioned in problem: {', '.join(parsed_info['file_paths'][:5])}\n"
+        if parsed_info.get("function_names"):
+            info_summary += f"Functions mentioned: {', '.join(parsed_info['function_names'][:5])}\n"
+        if parsed_info.get("class_names"):
+            info_summary += f"Classes mentioned: {', '.join(parsed_info['class_names'][:5])}\n"
+    
+    user_content = f"Problem statement:\n{problem_statement}\n\n"
+    
+    # Add parsed info summary for SWE-bench problems
+    if not is_polyglot and info_summary:
+        user_content += f"Extracted information from problem:\n{info_summary}\n\n"
+    
+    user_content += (
+        f"Repo tree (relative to /sandbox/repo):\n{tree_str}\n\n"
+        f"Key files (include tests where available):\n{files_blob}\n\n"
+        f"Analyze the problem carefully. The fix may require changes to multiple files. "
+        f"Ensure your solution addresses the root cause described in the problem statement. "
+    )
+    
+    # Add specific guidance based on parsed info
+    if not is_polyglot and parsed_info:
+        if parsed_info.get("file_paths"):
+            user_content += f"Pay special attention to: {', '.join(parsed_info['file_paths'][:3])}. "
+        if parsed_info.get("function_names"):
+            user_content += f"Look for functions: {', '.join(parsed_info['function_names'][:3])}. "
+    
+    user_content += f"Respond ONLY with JSON like: {user_json_example}"
     
     user = {
         "role": "user",
-        "content": (
-            f"Problem statement:\n{problem_statement}\n\n"
-            f"Repo tree (relative to /sandbox/repo):\n{tree_str}\n\n"
-            f"Key files (include tests where available):\n{files_blob}\n\n"
-            f"Analyze the problem carefully. The fix may require changes to multiple files. "
-            f"Ensure your solution addresses the root cause described in the problem statement. "
-            f"Respond ONLY with JSON like: {user_json_example}"
-        ),
+        "content": user_content,
     }
 
     # Try calling inference with retries
