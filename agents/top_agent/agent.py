@@ -132,9 +132,14 @@ def propose_changes(problem_statement: str, repo_snapshot: List[Tuple[str, str]]
         system_content = (
             "You are a senior software engineer agent competing on a strict evaluator. "
             "Modify only what is required to fully solve the problem. Keep code clean, deterministic, and testable. "
-            "Analyze the problem statement and repository structure, then return a JSON array with file changes. "
-            "Each object must have 'file_path' (relative to /sandbox/repo) and 'new_content' (ENTIRE file content). "
-            "Never return an empty array."
+            "Analyze the problem statement carefully - understand the root cause, then trace through the codebase to find all relevant files. "
+            "The problem may require changes to multiple files. Think step-by-step: "
+            "1) Identify the issue described in the problem statement "
+            "2) Find where the problematic code lives "
+            "3) Determine what needs to be changed (may involve function signatures, logic fixes, or new code paths) "
+            "4) Implement the fix ensuring it handles edge cases and maintains backward compatibility where needed "
+            "Return a JSON array with file changes. Each object must have 'file_path' (relative to /sandbox/repo) and 'new_content' (ENTIRE file content). "
+            "Never return an empty array. Make sure your changes fully address the problem described in the statement."
         )
         user_json_example = "[{\"file_path\": \"path/to/file.py\", \"new_content\": \"<entire file content>\"}]"
     
@@ -142,12 +147,40 @@ def propose_changes(problem_statement: str, repo_snapshot: List[Tuple[str, str]]
         "role": "system",
         "content": system_content,
     }
+    # Include more relevant files for SWE-bench problems
+    if not is_polyglot:
+        # For SWE-bench, try to include test files and relevant source files
+        test_files = [p for p, _ in repo_snapshot if 'test' in p.lower() and p.endswith('.py')]
+        # Find source files by checking snapshot directly
+        source_files = []
+        for p, content in repo_snapshot:
+            if p.endswith('.py') and p not in consider and 'test' not in p.lower():
+                if len(content) < 10000:  # Only include reasonably-sized files
+                    source_files.append(p)
+        # Add test files and some source files to context
+        extra_files = test_files[:3] + [p for p in source_files[:2]]
+        for p in extra_files:
+            if p not in consider:
+                # Get content from snapshot
+                content = None
+                for sp, sc in repo_snapshot:
+                    if sp == p:
+                        content = sc
+                        break
+                if content:
+                    rel = os.path.relpath(p, "/sandbox/repo")
+                    excerpt = content[:8000]
+                    files_excerpt.append(f"--- {rel} ---\n{excerpt}")
+        files_blob = "\n\n".join(files_excerpt)
+    
     user = {
         "role": "user",
         "content": (
             f"Problem statement:\n{problem_statement}\n\n"
             f"Repo tree (relative to /sandbox/repo):\n{tree_str}\n\n"
             f"Key files (include tests where available):\n{files_blob}\n\n"
+            f"Analyze the problem carefully. The fix may require changes to multiple files. "
+            f"Ensure your solution addresses the root cause described in the problem statement. "
             f"Respond ONLY with JSON like: {user_json_example}"
         ),
     }
