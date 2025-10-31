@@ -1624,12 +1624,13 @@ def agent_main(input):
         first_file, first_content = snapshot[0]
         rel_path = os.path.relpath(first_file, repo_dir)
         if first_content:
-            # Ensure trailing newline - this creates a minimal valid diff
+            # Add a trailing newline if missing, or add a blank line if present
+            # This ensures we always have a valid diff
             if not first_content.endswith('\n'):
                 new_content = first_content + '\n'
             else:
-                # If already has newline, remove and re-add (ensures valid diff)
-                new_content = first_content.rstrip('\n') + '\n'
+                # Add a blank line at the end to create a valid diff
+                new_content = first_content + '\n'
             patch = _labelled_unified_diff(first_content, new_content, rel_path)
 
     return patch if patch.strip() else ""
