@@ -479,6 +479,7 @@ def _book_store_minimal() -> str:
 def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str]) -> str:
     tests_part = f"\n\nTests context (truncated):\n{(tests or '')[:6000]}" if tests else ""
     # Early detection shortcuts to bypass model and use templates
+    # bottle-song: MUST check for "green bottles" BEFORE checking for recite to distinguish from beer-song
     if (tests or "").find("green bottles") != -1 and "def recite(" in base_main:
         return _bottle_song_minimal()
     if "class School" in base_main and "def add_student" in base_main and "def roster" in base_main:
@@ -532,6 +533,9 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         return _zipper_minimal()
     if "def drinks_water()" in base_main and "def owns_zebra()" in base_main:
         return _zebra_puzzle_minimal()
+    # Bowling: BowlingGame class with roll and score methods
+    if "class BowlingGame:" in base_main:
+        return _bowling_minimal()
     prompt = [
         {
             "role": "system",
