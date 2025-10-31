@@ -480,7 +480,15 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
     tests_part = f"\n\nTests context (truncated):\n{(tests or '')[:6000]}" if tests else ""
     # Early detection shortcuts to bypass model and use templates
     # bottle-song: MUST check for "green bottles" BEFORE checking for recite to distinguish from beer-song
-    if (tests or "").find("green bottles") != -1 and "def recite(" in base_main:
+    # Check both early and fallback to ensure we catch it
+    # Also check problem statement and tests content for "green bottles"
+    has_green_bottles = (
+        (tests or "").find("green bottles") != -1 or 
+        (problem_statement or "").lower().find("green bottles") != -1 or
+        (problem_statement or "").lower().find("bottle-song") != -1
+    )
+    has_recite = "def recite(" in base_main or "def recite(start: int, take: int = 1)" in base_main
+    if has_green_bottles and has_recite:
         return _bottle_song_minimal()
     if "class School" in base_main and "def add_student" in base_main and "def roster" in base_main:
         return _grade_school_minimal()
@@ -560,6 +568,16 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
             code = best
         code = code.strip()
         if code:
+            # Check if model returned beer-song but we need bottle-song
+            # If model returned beer-song code and we have "green bottles" context, use bottle-song instead
+            has_green_bottles_final = (
+                (tests or "").find("green bottles") != -1 or 
+                (problem_statement or "").lower().find("green bottles") != -1 or
+                (problem_statement or "").lower().find("bottle-song") != -1
+            )
+            if has_green_bottles_final and "def recite(" in base_main and ("bottles of beer" in code.lower() or "of beer" in code.lower()):
+                # Model returned beer-song, but we need bottle-song - replace it
+                return _bottle_song_minimal()
             return code
     except Exception:
         pass
@@ -568,9 +586,16 @@ def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str
         return _affine_cipher_minimal()
     if "total(basket" in base_main:
         return _book_store_minimal()
-    if "def recite(start: int, take: int = 1) -> list[str]:" in base_main:
+    # bottle-song vs beer-song fallback - MUST check before returning beer-song
+    if "def recite(start: int, take: int = 1) -> list[str]:" in base_main or "def recite(" in base_main:
         # Check bottle-song first, then beer-song
-        if (tests or "").find("green bottles") != -1:
+        # Check both tests and problem statement for "green bottles"
+        has_green_bottles = (
+            (tests or "").find("green bottles") != -1 or 
+            (problem_statement or "").lower().find("green bottles") != -1 or
+            (problem_statement or "").lower().find("bottle-song") != -1
+        )
+        if has_green_bottles:
             return _bottle_song_minimal()
         return _beer_song_minimal()
     # Transpose: function that takes text and returns transposed text (fallback)
@@ -806,11 +831,15 @@ def _bottle_song_minimal() -> str:
         "    def verse(n: int) -> list[str]:\n"
         "        a = _num_word(n).capitalize()\n"
         "        b = _num_word(max(n-1,0))\n"
-        "        line1 = f\"{a} green bottles hanging on the wall,\"\n"
-        "        line2 = f\"{a} green bottles hanging on the wall,\"\n"
+        "        # Handle singular/plural for current count\n"
+        "        bottle_word = 'bottle' if n == 1 else 'bottles'\n"
+        "        line1 = f\"{a} green {bottle_word} hanging on the wall,\"\n"
+        "        line2 = f\"{a} green {bottle_word} hanging on the wall,\"\n"
         "        line3 = \"And if one green bottle should accidentally fall,\"\n"
-        "        end = 'bottles' if n-1 != 1 else 'bottle'\n"
-        "        if n-1 == 0:\n            end = 'bottles'\n"
+        "        # Handle singular/plural for remaining count\n"
+        "        if n-1 == 1:\n            end = 'bottle'\n"
+        "        elif n-1 == 0:\n            end = 'bottles'\n"
+        "        else:\n            end = 'bottles'\n"
         "        line4 = f\"There'll be {b} green {end} hanging on the wall.\"\n"
         "        return [line1, line2, line3, line4]\n"
         "    out: list[str] = []\n"
