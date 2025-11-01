@@ -36,8 +36,12 @@ def list_repo_files(root: str) -> List[str]:
     for dirpath, _, filenames in os.walk(root):
         for name in filenames:
             p = os.path.join(dirpath, name)
-            if os.path.getsize(p) <= 100_000:
-                files.append(p)
+            try:
+                if os.path.isfile(p) and os.path.getsize(p) <= 100_000:
+                    files.append(p)
+            except (FileNotFoundError, OSError):
+                # File was deleted, is a broken symlink, or inaccessible - skip it
+                continue
     return sorted(files)
 
 
