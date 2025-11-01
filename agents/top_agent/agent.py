@@ -56,31 +56,65 @@ def snapshot_files(paths: List[str]) -> List[Tuple[str, str]]:
     return results
 
 
-def _extract_json_array(raw: str) -> List[dict]:
-    start = raw.find("[")
-    end = raw.rfind("]")
-    candidates = []
-    if start != -1 and end != -1 and end > start:
-        candidates.append(raw[start : end + 1])
-    if "```" in raw:
-        parts = raw.split("```")
-        for part in parts:
-            if "[" in part and "]" in part:
-                s = part.find("[")
-                e = part.rfind("]")
-                if e > s:
-                    candidates.append(part[s : e + 1])
-    candidates.append(raw)
-    for c in candidates:
-        try:
-            data = json.loads(c)
-            if isinstance(data, dict):
-                return [data]
-            if isinstance(data, list):
-                return data
-        except Exception:
-            continue
-    return []
+def _extract_json_array(response: str) -> list:
+    """Extract JSON array from response text."""
+    try:
+        # Try to find JSON array in response
+        start = response.find("[")
+        if start == -1:
+            return []
+        end = response.rfind("]")
+        if end == -1:
+            return []
+        json_str = response[start:end+1]
+        return json.loads(json_str)
+    except Exception:
+        return []
+
+
+def _regenerate_main(problem_statement: str, base_main: str, tests: Optional[str]) -> str:
+    """
+    Regenerate main.py using pure LLM approach - no hardcoding.
+    Uses generic problem-solving without problem-specific templates.
+    """
+    tests_part = f"\n\nTests context (truncated):\n{(tests or '')[:6000]}" if tests else ""
+    
+    # Generic approach: Ask the LLM to fix the file
+    system_content = (
+        "You are a senior software engineer. Fix the main.py file to solve the problem. "
+        "Return ONLY the complete fixed Python code, nothing else."
+    )
+    
+    user_content = f"""Problem: {problem_statement}
+
+Current main.py (truncated if large):
+{base_main[:8000]}
+{tests_part}
+
+Fix the main.py file to solve this problem. Return the complete fixed code."""
+    
+    try:
+        system = {"role": "system", "content": system_content}
+        user = {"role": "user", "content": user_content}
+        
+        response = call_inference(MODEL_NAME, 0.7, [system, user])
+        
+        # Extract code from response
+        code = response
+        if "```python" in code:
+            start = code.find("```python") + 9
+            end = code.find("```", start)
+            if end > start:
+                code = code[start:end].strip()
+        elif "```" in code:
+            start = code.find("```") + 3
+            end = code.find("```", start)
+            if end > start:
+                code = code[start:end].strip()
+        
+        return code if code.strip() else base_main
+    except Exception:
+        return base_main
 
 
 def _get_file_content(repo_snapshot: List[Tuple[str, str]], endswith: str) -> Optional[str]:
@@ -274,7 +308,18 @@ def agent_main(input):
         base = _get_file_content(snapshot, "/main.py") or ""
         tests = _get_file_content(snapshot, "/tests.py") or ""
         regenerated = _regenerate_main(problem_statement, base, tests)
-        return write_and_build_diff(snapshot, [(os.path.join(repo_dir, "main.py"), regenerated)])
+        
+        # Find the actual main.py path in the snapshot
+        main_path = None
+        for p, _ in snapshot:
+            if p.endswith("/main.py"):
+                main_path = p
+                break
+        
+        if main_path:
+            return write_and_build_diff(snapshot, [(main_path, regenerated)])
+        else:
+            return write_and_build_diff(snapshot, [(os.path.join(repo_dir, "main.py"), regenerated)])
 
     proposed = propose_changes(problem_statement, snapshot)
 
@@ -288,7 +333,7 @@ def agent_main(input):
             base = _get_file_content(snapshot, "/main.py") or ""
             tests = _get_file_content(snapshot, "/tests.py")
             completion = _regenerate_main(problem_statement, base, tests)
-            proposed = [(os.path.join(repo_dir, "main.py"), completion)]
+            proposed = [(target, completion)]
 
     patch = write_and_build_diff(snapshot, proposed)
 
