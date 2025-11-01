@@ -139,7 +139,13 @@ def read_problem_statement() -> str:
 
 def list_repo_files(root: str) -> List[str]:
     files = []
-    for dirpath, _, filenames in os.walk(root):
+    # Directories to skip (system/build/cache)
+    skip_dirs = {'.git', '__pycache__', '.pytest_cache', '.venv', 'venv', 'node_modules', '.egg-info', 'dist', 'build'}
+    
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Remove skip directories from dirnames in-place to prevent os.walk from descending into them
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
+        
         for name in filenames:
             p = os.path.join(dirpath, name)
             try:
