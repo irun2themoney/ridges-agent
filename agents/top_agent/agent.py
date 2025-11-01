@@ -13,6 +13,7 @@ RUN_ID = os.getenv("RUN_ID")
 SANDBOX_PROXY_URL = os.getenv("SANDBOX_PROXY_URL")
 
 MODEL_NAME = "deepseek-ai/DeepSeek-V3-0324"
+EXECUTION_MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"  # Smaller, faster model for executing edits
 
 # Inference helpers use the gateway provided by the validator
 
@@ -370,6 +371,201 @@ def propose_changes(problem_statement: str, repo_snapshot: List[Tuple[str, str]]
             continue
     
     return []
+
+
+def generate_edit_plan(problem_statement: str, repo_snapshot: List[Tuple[str, str]], files_context: str) -> dict:
+    """
+    Use DeepSeek-V3 to generate a structured edit plan.
+    
+    Returns a plan like:
+    {
+        "root_cause": "...",
+        "strategy": "...",
+        "edits": [
+            {"file": "path", "type": "replace", "find": "...", "replace": "..."},
+            {"file": "path", "type": "add_import", "import_line": "..."}
+        ]
+    }
+    """
+    system = {
+        "role": "system",
+        "content": (
+            "You are a code analysis expert. Generate a structured edit plan.\n"
+            "Return ONLY valid JSON (no markdown). The plan should have:\n"
+            "- root_cause: What's wrong\n"
+            "- strategy: How to fix it\n"
+            "- edits: List of specific edits to apply\n"
+            "Each edit should have: file, type (replace/add_import/add_line/remove_line), and action details."
+        )
+    }
+    
+    user = {
+        "role": "user",
+        "content": f"""Problem: {problem_statement}
+
+Files context:
+{files_context}
+
+Generate a structured JSON edit plan to solve this problem."""
+    }
+    
+    try:
+        response = call_inference(MODEL_NAME, 0.7, [system, user])
+        # Extract JSON from response
+        start = response.find("{")
+        end = response.rfind("}") + 1
+        if start != -1 and end > start:
+            json_str = response[start:end]
+            plan = json.loads(json_str)
+            return plan
+    except Exception as e:
+        return {"error": str(e), "edits": []}
+    
+    return {"error": "Failed to parse response", "edits": []}
+
+
+def execute_edit_plan(repo_snapshot: List[Tuple[str, str]], plan: dict) -> List[Tuple[str, str]]:
+    """
+    Execute a structured edit plan using Qwen (fast execution model).
+    
+    Takes a plan with edits and applies them to files.
+    Returns list of (path, new_content) tuples.
+    """
+    if "error" in plan or not plan.get("edits"):
+        return []
+    
+    changes = []
+    
+    for edit in plan.get("edits", []):
+        try:
+            edit_type = edit.get("type")
+            file_path = edit.get("file")
+            
+            # Find the file in snapshot
+            file_content = None
+            abs_file_path = None
+            for p, c in repo_snapshot:
+                if p.endswith("/" + file_path) or p.endswith(file_path):
+                    file_content = c
+                    abs_file_path = p
+                    break
+            
+            if not file_content:
+                continue
+            
+            new_content = file_content
+            
+            if edit_type == "replace":
+                find_str = edit.get("find", "")
+                replace_str = edit.get("replace", "")
+                if find_str:
+                    new_content = file_content.replace(find_str, replace_str)
+            
+            elif edit_type == "add_import":
+                import_line = edit.get("import_line", "")
+                if import_line and import_line not in new_content:
+                    # Add to top of file
+                    lines = new_content.split("\n")
+                    # Find position after other imports
+                    import_end = 0
+                    for i, line in enumerate(lines):
+                        if line.startswith("import ") or line.startswith("from "):
+                            import_end = i + 1
+                    lines.insert(import_end, import_line)
+                    new_content = "\n".join(lines)
+            
+            elif edit_type == "add_line":
+                line_content = edit.get("line_content", "")
+                position = edit.get("position", "end")
+                if line_content:
+                    lines = new_content.split("\n")
+                    if position == "end":
+                        lines.append(line_content)
+                    elif position == "start":
+                        lines.insert(0, line_content)
+                    new_content = "\n".join(lines)
+            
+            elif edit_type == "remove_line":
+                find_str = edit.get("find", "")
+                if find_str:
+                    lines = new_content.split("\n")
+                    lines = [l for l in lines if find_str not in l]
+                    new_content = "\n".join(lines)
+            
+            # If content changed, add to changes
+            if new_content != file_content and abs_file_path:
+                changes.append((abs_file_path, new_content))
+        
+        except Exception:
+            continue
+    
+    return changes
+
+
+def execute_edits_with_model(repo_snapshot: List[Tuple[str, str]], plan: dict) -> List[Tuple[str, str]]:
+    """
+    Use Qwen to execute edits from a plan.
+    Can do more intelligent transformations than simple string replacement.
+    """
+    if "error" in plan or not plan.get("edits"):
+        return []
+    
+    changes = []
+    
+    for edit in plan.get("edits", []):
+        try:
+            file_path = edit.get("file")
+            action = edit.get("action", "")
+            
+            # Find file
+            file_content = None
+            abs_file_path = None
+            for p, c in repo_snapshot:
+                if p.endswith("/" + file_path) or p.endswith(file_path):
+                    file_content = c
+                    abs_file_path = p
+                    break
+            
+            if not file_content or not action:
+                continue
+            
+            # Use Qwen to execute the edit
+            system = {
+                "role": "system",
+                "content": "You are a code editor. Apply the requested edit to the file. Return ONLY the complete modified file content."
+            }
+            
+            user = {
+                "role": "user",
+                "content": f"""File: {file_path}
+
+Current content:
+{file_content[:5000]}
+
+Action: {action}
+
+Apply the edit and return the complete modified file."""
+            }
+            
+            try:
+                new_content = call_inference(EXECUTION_MODEL_NAME, 0.5, [system, user])
+                
+                # Extract code if wrapped in markdown
+                if "```" in new_content:
+                    start = new_content.find("```") + 3
+                    end = new_content.rfind("```")
+                    if end > start:
+                        new_content = new_content[start:end].strip()
+                
+                if new_content and new_content != file_content and abs_file_path:
+                    changes.append((abs_file_path, new_content))
+            except Exception:
+                pass
+        
+        except Exception:
+            continue
+    
+    return changes
 
 
 def _labelled_unified_diff(old_content: str, new_content: str, label: str) -> str:
