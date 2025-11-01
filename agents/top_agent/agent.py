@@ -6,6 +6,8 @@ from typing import List, Tuple, Optional
 import subprocess
 import tempfile
 import requests
+import concurrent.futures
+import threading
 
 RUN_ID = os.getenv("RUN_ID")
 SANDBOX_PROXY_URL = os.getenv("SANDBOX_PROXY_URL")
@@ -21,6 +23,109 @@ def call_inference(model: str, temperature: float, messages: List[dict]) -> str:
     r = requests.post(f"{SANDBOX_PROXY_URL}/api/inference", headers={"Content-Type": "application/json"}, data=json.dumps(payload))
     r.raise_for_status()
     return r.text.strip('"')
+
+
+def call_inference_batch(model: str, temperature: float, message_batches: List[List[dict]], max_workers: int = 5) -> List[str]:
+    """
+    Make multiple inference calls in parallel.
+    
+    Args:
+        model: Model name
+        temperature: Temperature for inference
+        message_batches: List of message lists (each is a conversation)
+        max_workers: Max parallel requests (default 5 to avoid overwhelming gateway)
+    
+    Returns:
+        List of responses in same order as input message_batches
+    """
+    results = [None] * len(message_batches)
+    errors = []
+    lock = threading.Lock()
+    
+    def make_call(index, messages):
+        try:
+            result = call_inference(model, temperature, messages)
+            with lock:
+                results[index] = result
+        except Exception as e:
+            with lock:
+                errors.append((index, str(e)))
+                results[index] = None
+    
+    # Use ThreadPoolExecutor for parallel calls
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(make_call, i, messages)
+            for i, messages in enumerate(message_batches)
+        ]
+        # Wait for all to complete
+        concurrent.futures.wait(futures)
+    
+    return results
+
+
+def analyze_files_parallel(repo_snapshot: List[Tuple[str, str]], file_paths: List[str], problem_statement: str, max_files: int = 5) -> dict:
+    """
+    Analyze multiple files in parallel to understand codebase structure.
+    
+    Args:
+        repo_snapshot: List of (path, content) tuples
+        file_paths: List of file paths to analyze
+        problem_statement: The problem we're trying to solve
+        max_files: Max files to analyze in parallel
+    
+    Returns:
+        Dictionary with analysis results for each file
+    """
+    # Prepare analysis prompts for each file
+    message_batches = []
+    file_map = {}
+    
+    for i, file_path in enumerate(file_paths[:max_files]):
+        # Find content for this file
+        content = None
+        for p, c in repo_snapshot:
+            if p == file_path:
+                content = c
+                break
+        
+        if not content:
+            continue
+        
+        rel_path = os.path.relpath(file_path, "/sandbox/repo")
+        
+        # Create analysis prompt
+        system = {
+            "role": "system",
+            "content": "Analyze this file briefly. Identify: 1) Main purpose, 2) Key functions/classes, 3) Dependencies, 4) Relevant to problem?"
+        }
+        user = {
+            "role": "user",
+            "content": f"""Problem: {problem_statement[:500]}
+
+File: {rel_path}
+Content (first 3000 chars):
+{content[:3000]}
+
+Analyze this file."""
+        }
+        
+        message_batches.append([system, user])
+        file_map[len(message_batches) - 1] = file_path
+    
+    if not message_batches:
+        return {}
+    
+    # Make parallel calls
+    results = call_inference_batch(MODEL_NAME, 0.6, message_batches, max_workers=5)
+    
+    # Map results back to files
+    analysis = {}
+    for idx, result in enumerate(results):
+        if idx in file_map and result:
+            analysis[file_map[idx]] = result
+    
+    return analysis
 
 
 def read_problem_statement() -> str:
@@ -210,6 +315,21 @@ def propose_changes(problem_statement: str, repo_snapshot: List[Tuple[str, str]]
                     excerpt = content[:8000]
                     files_excerpt.append(f"--- {rel} ---\n{excerpt}")
         files_blob = "\n\n".join(files_excerpt)
+        
+        # MULTI-TOOL CALLS: Analyze more files in parallel for better context
+        # This is the key optimization - we make multiple parallel analyses before proposing
+        additional_files_to_analyze = [p for p, _ in repo_snapshot 
+                                      if p.endswith('.py') and p not in consider 
+                                      and len(next((c for sp, c in repo_snapshot if sp == p), "")) < 10000][:8]
+        
+        if additional_files_to_analyze:
+            file_analysis = analyze_files_parallel(repo_snapshot, additional_files_to_analyze, problem_statement, max_files=5)
+            if file_analysis:
+                analysis_summary = "File Analysis Results:\n"
+                for fpath, analysis in list(file_analysis.items())[:5]:
+                    rel_p = os.path.relpath(fpath, "/sandbox/repo")
+                    analysis_summary += f"\n{rel_p}: {analysis[:200]}...\n"
+                files_blob += "\n\n" + analysis_summary
     
     user = {
         "role": "user",
