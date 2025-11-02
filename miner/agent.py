@@ -111,38 +111,35 @@ def agent_main(
     try:
         problem_statement = input_dict.get("problem_statement", "")
         
-        # Determine problem type
-        problem_type = check_problem_type(problem_statement)
-        
-        # Route to appropriate processing function
-        if problem_type == PROBLEM_TYPE_FIX:
-            # Try to import and use actual fix task processor
+        # Try to get a patch, with multiple fallbacks
+        try:
+            # Try importing the actual processors
             try:
                 from create_tasks_ext import process_create_task
                 result = process_create_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
-                # Ensure result has 'patch' key and it's a string
-                if isinstance(result, dict) and "patch" in result:
-                    patch = result.get("patch", "")
-                    return {"patch": str(patch) if patch else ""}
-                else:
-                    return {"patch": str(result) if result else ""}
-            except Exception as e:
-                # Fallback: return empty patch if actual processor fails
-                return {"patch": ""}
-        else:
-            # CREATE task - try to import actual processor
-            try:
-                from create_tasks_ext import process_create_task_streamlined
-                result = process_create_task_streamlined(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
-                # Ensure result has 'patch' key and it's a string
-                if isinstance(result, dict) and "patch" in result:
-                    patch = result.get("patch", "")
-                    return {"patch": str(patch) if patch else ""}
-                else:
-                    return {"patch": str(result) if result else ""}
-            except Exception as e:
-                # Fallback: return empty patch
-                return {"patch": ""}
+            except:
+                try:
+                    from create_tasks_ext import process_create_task_streamlined
+                    result = process_create_task_streamlined(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+                except:
+                    result = ""
+            
+            # Ensure result is always a string
+            if result is None:
+                patch_str = ""
+            elif isinstance(result, dict) and "patch" in result:
+                patch_str = str(result.get("patch", ""))
+            elif isinstance(result, str):
+                patch_str = result
+            else:
+                patch_str = str(result) if result else ""
+            
+            # Final safety check
+            return {"patch": patch_str if isinstance(patch_str, str) else ""}
+        
+        except Exception as inner_e:
+            # Innermost fallback
+            return {"patch": ""}
     
     except Exception as e:
         # Return safe fallback if anything fails
