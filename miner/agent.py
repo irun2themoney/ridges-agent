@@ -119,26 +119,30 @@ def agent_main(
             # Try to import and use actual fix task processor
             try:
                 from create_tasks_ext import process_create_task
-                result_patch = process_create_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+                result = process_create_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+                # Ensure result has 'patch' key and it's a string
+                if isinstance(result, dict) and "patch" in result:
+                    patch = result.get("patch", "")
+                    return {"patch": str(patch) if patch else ""}
+                else:
+                    return {"patch": str(result) if result else ""}
             except Exception as e:
                 # Fallback: return empty patch if actual processor fails
-                result_patch = ""
+                return {"patch": ""}
         else:
             # CREATE task - try to import actual processor
             try:
                 from create_tasks_ext import process_create_task_streamlined
-                result_patch = process_create_task_streamlined(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+                result = process_create_task_streamlined(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+                # Ensure result has 'patch' key and it's a string
+                if isinstance(result, dict) and "patch" in result:
+                    patch = result.get("patch", "")
+                    return {"patch": str(patch) if patch else ""}
+                else:
+                    return {"patch": str(result) if result else ""}
             except Exception as e:
                 # Fallback: return empty patch
-                result_patch = ""
-        
-        # Ensure we have a valid result
-        if isinstance(result_patch, dict) and "patch" in result_patch:
-            return result_patch
-        elif isinstance(result_patch, str):
-            return {"patch": result_patch}
-        else:
-            return {"patch": ""}
+                return {"patch": ""}
     
     except Exception as e:
         # Return safe fallback if anything fails
