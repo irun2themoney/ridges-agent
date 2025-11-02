@@ -2,86 +2,23 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Dict
-
-# Import all extracted components
-try:
-    from utils_helpers import Utils, FunctionVisitor, VariableNormalizer
-    from pev_mcts_framework import MCTS, MCTSNode
-    from pev_verifier_framework import StrategicPlanner, Verifier, PEVWorkflow
-    from phase_manager_ext import PhaseManager, PhaseConstants
-    from tool_manager_ext import FixTaskEnhancedToolManager
-    from create_tasks_ext import (
-        process_create_task, process_create_task_streamlined,
-        validate_edge_case_comments, analyze_missing_edge_cases,
-        generate_initial_solution, determine_model_order,
-        generate_solution_with_multi_step_reasoning,
-        generate_testcases_with_multi_step_reasoning
-    )
-except ImportError as e:
-    print(f"[WARNING] Some modules failed to import: {e}")
-    print("[INFO] Attempting to import from fallback location...")
-
-import requests
 import subprocess
 import json
-import re
-import textwrap
-import time
-from enum import Enum
-from pathlib import Path
+from typing import Any, Dict
 
 # ============================================================================
-# CONSTANTS & GLOBALS
+# GLOBAL CONFIGURATION
 # ============================================================================
 
 run_id = None
-DEFAULT_PROXY_URL = "http://localhost:5000"
-DEFAULT_TIMEOUT = 300
-
-PROBLEM_TYPE_CHECK_PROMPT = textwrap.dedent(
-    '''
-    You are the problem type checker that will categories problem type into:
-    
-    1. CREATE: If the problem statement is about creating a new functionality from scratch.
-    2. FIX: If the problem statement is about fixing a bug, creating a new functionality or improving the existing codebase.
-    
-    Only respond with the "FIX" or "CREATE".
-    '''
-)
+DEFAULT_PROXY_URL = os.getenv("SANDBOX_PROXY_URL", "http://sandbox_proxy")
+DEFAULT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT", "2000"))
 
 PROBLEM_TYPE_FIX = "FIX"
 PROBLEM_TYPE_CREATE = "CREATE"
 
 # ============================================================================
-# PROMPTS (CORE ONLY - Others moved to prompts_ext.py)
-# ============================================================================
-
-FIX_TASK_SYSTEM_PROMPT = textwrap.dedent(
-    """
-    You are an expert software engineer. Analyze the problem and repository structure, then solve the bug systematically.
-    
-    IMPORTANT: 
-    - Generate only UNIFIED DIFF format patches
-    - Use `git diff` compatible format
-    - Include proper context lines
-    - Do NOT generate "observation:" - it will be provided
-    - Be precise and minimal in changes
-    """
-)
-
-AGENT_ROUTER_PROMPT = textwrap.dedent(
-    """
-    Analyze this problem and repository structure. Determine if we should use:
-    - NCTS_AGENT: For complex, research-style problems requiring deep exploration
-    - STEAMEDLINE_AGENT: For straightforward bug fixes and simple tasks
-    
-    Only respond with ONE of: NCTS_AGENT or STEAMEDLINE_AGENT
-    """
-)
-
-# ============================================================================
-# UTILITY FUNCTIONS
+# HELPER FUNCTIONS
 # ============================================================================
 
 def ensure_git_initialized():
@@ -93,7 +30,14 @@ def ensure_git_initialized():
 
 def set_env_for_agent():
     """Set environment variables for the agent."""
-    pass
+    if os.getcwd() not in os.environ.get("PYTHONPATH", ""):
+        os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + ":" + os.getcwd()
+
+def check_problem_type(problem_statement: str) -> str:
+    """Determine if problem is FIX or CREATE type."""
+    if "fix" in problem_statement.lower() or "bug" in problem_statement.lower():
+        return PROBLEM_TYPE_FIX
+    return PROBLEM_TYPE_CREATE
 
 def get_directory_tree(root: str = ".", max_depth: int = 3) -> str:
     """Get directory tree structure."""
@@ -108,48 +52,55 @@ def get_directory_tree(root: str = ".", max_depth: int = 3) -> str:
                 result.append(f"{subindent}{file}")
     return "\n".join(result[:100])
 
-def check_problem_type(problem_statement: str) -> str:
-    """Check if problem is FIX or CREATE type."""
-    if "fix" in problem_statement.lower() or "bug" in problem_statement.lower():
-        return PROBLEM_TYPE_FIX
-    return PROBLEM_TYPE_CREATE
+# ============================================================================
+# PLACEHOLDER STUBS (for compatibility with extracted modules)
+# ============================================================================
 
-def select_agent_strategy(problem_statement: str, repo_structure: str) -> Dict[str, Any]:
-    """Select between NCTS and STREAMLINED agents."""
-    return {
-        "agent": "NCTS_AGENT",
-        "confidence": 0.8,
-        "reasoning": "Using default NCTS strategy"
-    }
+class EnhancedNetwork:
+    """Placeholder for core network inference."""
+    pass
 
-def process_fix_task(input_dict: Dict[str, Any], enable_pev: bool = True, enable_mcts: bool = True) -> Dict[str, str]:
-    """Process a FIX task."""
-    return {
-        "patch": "--- a/test.py\n+++ b/test.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
-    }
+class SummarizedCOT:
+    """Placeholder for chain-of-thought tracking."""
+    pass
+
+class EnhancedToolManager:
+    """Placeholder for tool management."""
+    pass
 
 # ============================================================================
 # MAIN AGENT ENTRY POINT
 # ============================================================================
 
-def agent_main(input_dict: Dict[str, Any], repo_dir: str = "repo", enable_pev: bool = True, enable_mcts: bool = True) -> Dict[str, str]:
+def agent_main(
+    input_dict: Dict[str, Any],
+    repo_dir: str = "repo",
+    enable_pev: bool = True,
+    enable_mcts: bool = True
+) -> Dict[str, str]:
     """
     Main entry point for the Ridges agent.
     
+    Implements the required Ridges interface:
+    - Input: Dictionary with 'problem_statement' and 'run_id'
+    - Output: Dictionary with 'patch' key containing unified diff
+    
     Args:
-        input_dict: Dictionary with 'problem_statement' and optional 'run_id'
+        input_dict: Dictionary with problem_statement and run_id
         repo_dir: Path to repository root
-        enable_pev: Enable PEV workflow
+        enable_pev: Enable PEV workflow (Plan-Execute-Verify)
         enable_mcts: Enable MCTS exploration
         
     Returns:
         Dictionary with 'patch' key containing unified diff
     """
-    global run_id, DEFAULT_PROXY_URL
+    global run_id
     
+    # Initialize global state
     run_id = input_dict.get("run_id", os.getenv("RUN_ID", ""))
     repo_dir = os.path.abspath(repo_dir)
     
+    # Setup workspace
     sys.path.insert(0, repo_dir)
     if os.path.exists(repo_dir):
         os.chdir(repo_dir)
@@ -158,38 +109,58 @@ def agent_main(input_dict: Dict[str, Any], repo_dir: str = "repo", enable_pev: b
     set_env_for_agent()
     
     try:
-        problem_type = check_problem_type(input_dict.get("problem_statement", ""))
+        problem_statement = input_dict.get("problem_statement", "")
         
+        # Determine problem type
+        problem_type = check_problem_type(problem_statement)
+        
+        # Route to appropriate processing function
         if problem_type == PROBLEM_TYPE_FIX:
-            result = process_fix_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+            # Try to import and use actual fix task processor
+            try:
+                from create_tasks_ext import process_create_task
+                result_patch = process_create_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+            except Exception as e:
+                # Fallback: return empty patch if actual processor fails
+                result_patch = ""
         else:
-            result = process_create_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+            # CREATE task - try to import actual processor
+            try:
+                from create_tasks_ext import process_create_task_streamlined
+                result_patch = process_create_task_streamlined(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
+            except Exception as e:
+                # Fallback: return empty patch
+                result_patch = ""
+        
+        # Ensure we have a valid result
+        if isinstance(result_patch, dict) and "patch" in result_patch:
+            return result_patch
+        elif isinstance(result_patch, str):
+            return {"patch": result_patch}
+        else:
+            return {"patch": ""}
     
     except Exception as e:
-        print(f"[ERROR] Agent exception: {e}")
-        result = {"patch": ""}
+        # Return safe fallback if anything fails
+        return {"patch": ""}
     
     finally:
+        # Cleanup: reset git state
         try:
             os.system("git reset --hard")
         except:
             pass
-    
-    return result
 
 
 # ============================================================================
-# PLACEHOLDER IMPLEMENTATIONS (These should import from extracted modules)
+# SCRIPT ENTRY POINT (for testing)
 # ============================================================================
 
-class EnhancedNetwork:
-    """Placeholder - actual implementation in full agent"""
-    pass
-
-class SummarizedCOT:
-    """Placeholder - actual implementation in full agent"""
-    pass
-
-class EnhancedToolManager:
-    """Placeholder - actual implementation in full agent"""
-    pass
+if __name__ == "__main__":
+    # Simple test
+    test_input = {
+        "problem_statement": "Test problem",
+        "run_id": "test-123"
+    }
+    result = agent_main(test_input)
+    print(f"Result: {json.dumps(result, indent=2)}")
