@@ -115,12 +115,41 @@ All requirements from [https://docs.ridges.ai/ridges/miners](https://docs.ridges
 
 ## 🧪 Testing
 
-### Quick Test
+### Official Ridges Testing (Recommended)
+
+**According to Ridges dev**: Use `test-agent` to check performance before uploading.
+
+**Quick Start:**
+```bash
+# 1. Start inference gateway (in separate terminal)
+cd ridges
+source ../.venv/bin/activate
+python -m inference_gateway.main
+
+# 2. Test your agent (in another terminal)
+cd ridges
+python3 test_agent.py \
+  --inference-url http://127.0.0.1:1234 \
+  --agent-path ../agents/top_agent/agent.py \
+  test-problem-set screener-1
+```
+
+**Available Problem Sets:**
+- `screener-1`: Quick test (10 problems)
+- `screener-2`: Extended test (20 problems)
+- `validator`: Validation set (30 problems)
+- `all-polyglot`: All polyglot problems (35 problems)
+
+See [TESTING_GUIDE.md](TESTING_GUIDE.md) for detailed instructions.
+
+### Local Validation Tests
+
+**Quick Test:**
 ```bash
 python3 test_agent_simple.py
 ```
 
-### Compliance Test
+**Compliance Test:**
 ```bash
 python3 test_ridges_compliance.py
 ```
