@@ -103,7 +103,6 @@ GENERATE_TESTCASES_WITH_MULTI_STEP_REASONING_PROMPT = textwrap.dedent(
         class TestFuncA(unittest.TestCase):
             def test_main_func(self):
                 self.assertEqual(main_func(), "expected_output")
-    
         if __name__ == "__main__":
             unittest.main()
     """
@@ -138,51 +137,7 @@ GENERATE_SOLUTION_WITH_MULTI_STEP_REASONING_PROMPT = textwrap.dedent(
     """
 )
 
-FIX_TASK_SYSTEM_PROMPT = textwrap.dedent(
-    """
-    # Hey there! You're a Coding Assistant 🚀. I have uploaded all files of a python repository. Your current working directory is at the root of that repo. You will be provided with a problem statement and you need to make the necessary changes to fix the issue.
-    
-    ## Follow these steps to fix the issue:
-    1. As a first step, find the relevant files in the repo to work on.
-    2. Localise the code causing the issue.
-    3. Edit the sourcecode of the repo to resolve the issue.
-    4. Think about edgecases and make sure the fix handles them as well.
-    5. Code must always be backward compatible unless explicitly mentioned otherwise in the problem statement.
-    6. Thoroughly check the entire code base to ensure the changes made are exhaustive and does not break any other functionality.
-    7. Thoroughly check the entire code base to ensure the changes user requested are only limited to the ones you have identified.
-    8. Never edit/update the existing test files directly when validating a hypothesis. Instead, when you need a new or focused test to reproduce or protect the fix, use the dedicated test generation tool.
-    9. Do not create any new files or directories unless absolutely necessary for the fix. Generated tests are allowed but are excluded from the final patch automatically.
-    10. Always check all the test cases which will be impacted with your change and ensure they don't fail.
-    11. You need to propose at least 2 meaningfully different and accurate solutions to the problem to the user for approval.
-    12. You need to look at both expected output mentioned in the problem statement AND the output in the most relevant test case. This is very important.
-    13. If you find that the error while running the run_code or run_repo_tests tool due to missing dependencies, do not try to solve it as you don't have any internet access.
-    
-    You can get context about the project structure by calling `get_project_metadata`.
-    
-    ## Multi-file awareness (critical):
-    - Tests and patch contexts may span multiple files. Do not stop after the first similar match or applied fix.
-    - Keep searching the repository after each match and apply consistent changes to every relevant file before finishing.
-    - Use `get_context_around_line` to understand the surrounding code logic relevant to your thinking.
-    - Use `list_directory` to list out a directory if you need to see what files are there
-    - Prefer using `search_in_all_files_content` to enumerate matches across the codebase and `search_in_specified_file_v2` to drill into each file; iterate until no applicable occurrences remain.
-    - Re-run tests only after covering all discovered occurrences to avoid partial fixes.
-    
-    ## Test generation guidance:
-    - Find the most relevant existing test files(more than 5) if there are more than 5 test files in the repo and use `run_repo_tests` to test them. Loop this until any test file of them fails to find FAIL_TO_PASS test file.
-    - Use `generate_test_function(file_path, test_function_code, position)` after discovering FAIL_TO_PASS test file.
-    - Prefer `position="auto"` which inserts after imports or before the `if __name__ == "__main__":` block when present, falling back to append.
-    - Generated tests (new files or appended functions) are tracked and excluded from the final patch automatically, so they must not show up in the final diff.
-    - Keep generated tests minimal and focused on the bug and its edge cases.
-    - Note that current test functions should be passed originally and generated test function is FAIL_TO_PASS.
-    
-    {extra_fix_request}
-    
-    You have access to the following tools:-
-    {tools_docs}
-    
-    {format_prompt}
-    """
-)
+FIX_TASK_SYSTEM_PROMPT = textwrap.dedent("""# Hey there! You're a Coding Assistant 🚀. You'll be given a problem statement and need to fix the issue. Steps: 1. Find relevant files. 2. Locate issue. 3. Edit code. 4. Handle edgecases. 5. Ensure backward compatibility. 6. Check entire codebase for exhaustive changes. 7. Limit changes to requested ones. 8. Use test generation tool, never edit existing test files. 9. Don't create new files unless necessary. 10. Check impacted tests. 11. Propose 2 different solutions. 12. Check expected output AND test output. 13. Don't solve missing dependencies. Multi-file awareness: Search all files, apply consistent changes, use context tools. Test generation: Find FAIL_TO_PASS test file, use generate_test_function. Generated tests excluded from patch. {extra_fix_request} Tools: {tools_docs} {format_prompt}""")
 
 SOLVE_TASK_NON_FUNCTIONAL_TEST_PROMPT = textwrap.dedent(
     """
@@ -230,19 +185,12 @@ FIX_TASK_INSTANCE_PROMPT_TEMPLATE = textwrap.dedent(
     """
 )
 
-TEST_RUNNER_MODE_PROMPT = textwrap.dedent(
-    """\
-    You are a helpful assistant that determines the mode of the test runner.
-    Read the test runner file and determine if it requires a module or a file path to run the test.
-    Output should be one of MODULE or FILE, No other texts are allowed.
-    - MODULE: When the test runner requires a module path to run the test.
-    - FILE: When the test runner requires a file path to run the test (e.g. pytest, unittest, py.test, etc.).
-    """
-)
+TEST_RUNNER_MODE_PROMPT = textwrap.dedent("""You are a helpful assistant that determines test runner mode. Read test runner file and determine if it requires MODULE or FILE path. Output only MODULE or FILE. MODULE: requires module path. FILE: requires file path (e.g. pytest, unittest).""")
+
+FORMAT_PROMPT_V0 = textwrap.dedent("""You must respond in this format: next_thought: <your thought> next_tool_name: <tool name> next_tool_args: <tool arguments as JSON>""")
 
 class EnhancedCOT:
     class Action:
-
         def __init__(
             self,
             next_thought: str,
@@ -265,20 +213,16 @@ class EnhancedCOT:
             self.inference_error_counter = inference_error_counter
             self.request_data = request_data
             self.is_deleted = False
-
     def __init__(self, latest_observations_to_keep=5):
         self.thoughts: list[EnhancedCOT.Action] = []
         self.latest_observations_to_keep = latest_observations_to_keep
         self.repeated_thoughts = 0
-
     def add_action(self, action: EnhancedCOT.Action) -> bool:  # don't add if thought is repeated
         self.thoughts.append(action)
         return True
-
     def clear_and_restart(self):
         self.thoughts = self.thoughts[int(len(self.thoughts) / 2) :]
         self.repeated_thoughts = 0
-
     def is_thought_repeated(self) -> bool:
         if len(self.thoughts) < 2:
             self.repeated_thoughts = 0
@@ -290,71 +234,39 @@ class EnhancedCOT:
             return True
         self.repeated_thoughts = 0
         return False
-
     def to_str(self):
-        messages = []
-        for i, thought in enumerate(self.thoughts):
-            if thought.is_deleted:
+        msgs, n = [], len(self.thoughts)
+        for i, t in enumerate(self.thoughts):
+            if t.is_deleted:
                 continue
-            if i < len(self.thoughts) - self.latest_observations_to_keep:
-                assistant_str = (
-                    f"next_thought:{thought.next_thought}\n" f"next_tool_name:{thought.next_tool_name}\n" f"next_tool_args:{thought.next_tool_args}\n"
-                )
-                if thought.observation is None:
-                    _obs_len = 0
-                elif isinstance(thought.observation, (list, tuple)):
-                    _obs_len = len(thought.observation)
-                else:
-                    _obs_len = len(str(thought.observation).splitlines())
-                user_str = f"observation: {'error ocurred.' if thought.is_error else ''} " f"output omitted ({_obs_len}) lines\n"
-
+            asstr = f"next_thought:{t.next_thought}\nnext_tool_name:{t.next_tool_name}\nnext_tool_args:{t.next_tool_args}"
+            if i < n - self.latest_observations_to_keep:
+                obs_len = 0 if t.observation is None else len(t.observation) if isinstance(t.observation, (list, tuple)) else len(str(t.observation).splitlines())
+                usstr = f"observation: {'error ocurred. ' if t.is_error else ''}output omitted ({obs_len}) lines\n"
             else:
-                if thought.is_error is None or i == len(self.thoughts) - 1:
-                    assistant_str = (
-                        f"next_thought:{thought.next_thought}\nnext_tool_name:{thought.next_tool_name}\nnext_tool_args:{thought.next_tool_args}"
-                    )
-                    if isinstance(thought.observation, (list, tuple)):
-                        try:
-                            obs_render = json.dumps(list(thought.observation), ensure_ascii=False)
-                        except Exception:
-                            obs_render = str(thought.observation)
-                    else:
-                        obs_render = str(thought.observation)
-                    user_str = f"observation: {obs_render}"
+                if t.is_error is None or i == n - 1:
+                    obs_r = json.dumps(list(t.observation), ensure_ascii=False) if isinstance(t.observation, (list, tuple)) else str(t.observation)
+                    try:
+                        obs_r = json.dumps(list(t.observation), ensure_ascii=False) if isinstance(t.observation, (list, tuple)) else str(t.observation)
+                    except:
+                        obs_r = str(t.observation)
+                    usstr = f"observation: {obs_r}"
                 else:
-                    if self.thoughts[-1].is_error == None and thought.is_error != None:
-                        assistant_str = (
-                            f"next_thought:{thought.next_thought}\n"
-                            f"next_tool_name:{thought.next_tool_name}\n"
-                            f"next_tool_args:{thought.next_tool_args}"
-                        )
-                        if thought.observation is None:
-                            _obs_len = 0
-                        elif isinstance(thought.observation, (list, tuple)):
-                            _obs_len = len(thought.observation)
-                        else:
-                            _obs_len = len(str(thought.observation).splitlines())
-                        user_str = f"observation: error ocurred. detailed output omitted " f"({_obs_len}) lines\n"
+                    if self.thoughts[-1].is_error == None and t.is_error != None:
+                        obs_len = 0 if t.observation is None else len(t.observation) if isinstance(t.observation, (list, tuple)) else len(str(t.observation).splitlines())
+                        usstr = f"observation: error ocurred. detailed output omitted ({obs_len}) lines\n"
                     else:
-                        assistant_str = (
-                            f"next_thought:{thought.next_thought}\nnext_tool_name:{thought.next_tool_name}\nnext_tool_args:{thought.next_tool_args}"
-                        )
-                        if isinstance(thought.observation, (list, tuple)):
-                            try:
-                                obs_render = json.dumps(list(thought.observation), ensure_ascii=False)
-                            except Exception:
-                                obs_render = str(thought.observation)
-                        else:
-                            obs_render = str(thought.observation)
-                        user_str = f"observation: {obs_render}"
-            messages.append({"role": "assistant", "content": assistant_str})
-            messages.append({"role": "user", "content": user_str})
-        return messages
-
+                        try:
+                            obs_r = json.dumps(list(t.observation), ensure_ascii=False) if isinstance(t.observation, (list, tuple)) else str(t.observation)
+                        except:
+                            obs_r = str(t.observation)
+                        usstr = f"observation: {obs_r}"
+            msgs.append({"role": "assistant", "content": asstr})
+            msgs.append({"role": "user", "content": usstr})
+        return msgs
 class EnhancedToolManager:
     logs = []
     TOOL_LIST = {}
-
     class Error(Exception):
         class ErrorType(Enum):
             SYNTAX_ERROR = 1
@@ -371,11 +283,9 @@ class EnhancedToolManager:
             INVALID_FILE_PATH = 12
             INVALID_TOOL_CALL = 13
             IMPORT_ERROR = 14
-
         def __init__(self, error_type: ErrorType, message: str):
             self.error_type = error_type
             self.message = message
-
     def tool(fn):
         def wrapper(self, *args, **kwargs):
             self.tool_invocations[fn.__name__] += 1
@@ -384,7 +294,6 @@ class EnhancedToolManager:
             except EnhancedToolManager.Error as e:
                 self.tool_failure[fn.__name__][e.error_type] += 1
                 return e.message
-
         wrapper.__name__ = fn.__name__
         wrapper.__doc__ = fn.__doc__
         wrapper.__signature__ = inspect.signature(fn)
@@ -395,7 +304,6 @@ class EnhancedToolManager:
 
     def __init__(self, **kwargs):
         pass
-
     @classmethod
     def tool_parsing(cls, fn):
         tool_schemas = None
@@ -436,7 +344,6 @@ class EnhancedToolManager:
             properties[param.name] = {"type": json_type, "description": param_description}
         parameters = {"type": "object", "properties": properties, "required": required}
         tool_schemas = {"name": name, "description": doc.strip(), "input_schema": parameters}
-
         return tool_schemas
 
     @classmethod
@@ -447,17 +354,14 @@ class EnhancedToolManager:
             return list(self.TOOL_LIST[tool_name]["input_schema"]["properties"].keys())
         else:
             return self.TOOL_LIST[tool_name]["input_schema"]["required"]
-
     def get_tool_docs(self) -> str:
         return "\n\n".join([json.dumps(tool_metadata, ensure_ascii=False) for _, tool_metadata in self.TOOL_LIST.items()])
-
     def get_tool(self, tool_name: str):
         if tool_name not in self.TOOL_LIST:
             return f"Error: tool '{tool_name}' not found"
         tool_method = getattr(self, tool_name, None)
         if tool_method is None or not callable(tool_method):
             return f"Error: tool '{tool_name}' does not exist. Please use one of the following tools: {', '.join(self.TOOL_LIST.keys())}"
-
         return tool_method
 
     def _check_syntax_error(self, content: str, file_path: str = "<unknown>") -> bool:
@@ -465,7 +369,6 @@ class EnhancedToolManager:
             ast.parse(content, filename=file_path)
             return False, None
         except SyntaxError as e:
-
             return True, EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.SYNTAX_ERROR.name, f"Syntax error. {str(e)}")
 
     def _save(self, file_path: str, content: str) -> str:
@@ -475,7 +378,6 @@ class EnhancedToolManager:
                 file.write(content)
             return f"File {file_path} saved successfully"
         else:
-
             error.message = "Error saving file. " + error.message
             raise EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.SYNTAX_ERROR.name, error.message)
 
@@ -487,7 +389,6 @@ class EnhancedToolManager:
         try:
             command = f"""
             shopt -s globstar
-
             cp .gitignore .gitignore.backup 2>/dev/null || true
             echo 'src/agent.py' >> .gitignore
             echo 'src/agent_runner.py' >> .gitignore
@@ -521,7 +422,6 @@ class Network:
         NETWORK_ERROR = 7
         AUTHENTICATION_ERROR = 8
         RESOURCE_EXHAUSTED = 9
-
     @classmethod
     def is_valid_response(cls, raw_text: str) -> bool:
         if type(raw_text) is dict and raw_text.get("error", None) is not None and raw_text.get("error") != "":
@@ -539,11 +439,9 @@ class Network:
         if "Network unreachable" in raw_text or "Connection refused" in raw_text:
             return False, cls.ErrorType.NETWORK_ERROR.name
         return True, None
-
     @classmethod
     def get_error_counter(cls) -> dict[str, int]:
         return {k: 0 for k in cls.ErrorType.__members__}
-
     @classmethod
     def fix_json_string_with_llm(cls, json_string: str, attempt: int = 0) -> dict:
         messages = [
@@ -556,7 +454,6 @@ class Network:
             response = json.loads(response)
             return response
         except JSONDecodeError as e:
-
             return None
 
     @classmethod
@@ -573,7 +470,6 @@ class Network:
     ) -> str:
         global run_id
         url = f"{DEFAULT_PROXY_URL.rstrip('/')}/api/inference"
-
         request_data = {
             "run_id": run_id if run_id else str(uuid4()),
             "messages": messages,
@@ -637,7 +533,6 @@ class Network:
     def _request_next_action_with_retry(
         cls, messages: dict, model: str, max_retries: int = 5, base_delay: float = 1.0, temperature: float = 0.0
     ) -> str:
-
         raw_text = "not defined"
         error_counter = cls.get_error_counter()
         next_thought, next_tool_name, next_tool_args = None, None, None
@@ -698,7 +593,6 @@ class Network:
             pattern += f'"{k}": (.*)'
             if i != len(arguments) - 1:
                 pattern += r",\s*"
-
         match = re.search(pattern, json_string)
 
         if not match:
@@ -720,7 +614,6 @@ class Network:
         parse string to json, fix unecaped " in values like this: '{"a": "text "text2" text3 "text4"", "b": "text3"}'
         returns json or error message
         """
-
         next_tool_args = next_tool_args.replace("```json", "").strip("```")
         error_msg = ""
 
@@ -745,7 +638,6 @@ class Network:
             if role not in {"system", "user", "assistant", "tool"}:
                 continue
             content = m.get("content", "")
-
             if role == "assistant" and not content.strip():
                 continue
 
@@ -773,7 +665,6 @@ class Network:
             and text_resp.find("next_tool_name:") < text_resp.find("next_tool_args:")
             and text_resp.find("next_tool_name:") > 10
         ):
-
             text_resp = "next_thought: " + text_resp
         if (
             "next_tool_name:" in text_resp
@@ -815,7 +706,6 @@ class Network:
             except JSONDecodeError as e:
                 error_msg = f"Invalid JSON: {str(e)}"
                 Utils.log_to_failed_messages(text_resp)
-
         else:
             if "is longer than the model's context length" in text_resp:
                 error_msg = "Invalid response. too long context"
@@ -844,53 +734,32 @@ class FunctionVisitor(ast.NodeVisitor):
         self.current_class = None
         self.class_hierarchy = []
         self.file_content = file_content
-
     def visit_ClassDef(self, node):
         self.class_hierarchy.append(node.name)
         self.current_class = "::".join(self.class_hierarchy)
         self.generic_visit(node)
         self.class_hierarchy.pop()
         self.current_class = "::".join(self.class_hierarchy) if self.class_hierarchy else None
-
     def _process_function(self, node):
-        full_function_name = f"{self.current_class}::{node.name}" if self.current_class else node.name
-        line_number = node.lineno
-        if isinstance(node.decorator_list, list) and len(node.decorator_list) > 0:
-            line_number = node.decorator_list[0].lineno
-
-        end_line_number = line_number
-        if isinstance(node.body, list) and len(node.body) > 0:
-            end_line_number = node.body[-1].lineno
-
-        lines = self.file_content.split("\n")
-        body = "\n".join(lines[line_number - 1 : end_line_number])
-
-        self.functions[full_function_name] = {"class": self.current_class, "body": body, "line_number": line_number}
+        fn = f"{self.current_class}::{node.name}" if self.current_class else node.name
+        ln = node.decorator_list[0].lineno if isinstance(node.decorator_list, list) and node.decorator_list else node.lineno
+        eln = node.body[-1].lineno if isinstance(node.body, list) and node.body else ln
+        body = "\n".join(self.file_content.split("\n")[ln-1:eln])
+        self.functions[fn] = {"class": self.current_class, "body": body, "line_number": ln}
         self.generic_visit(node)
-
     def visit_FunctionDef(self, node):
         self._process_function(node)
-
     def visit_AsyncFunctionDef(self, node):
         self._process_function(node)
-
     def visit_Module(self, node):
         self.current_class = None
         self.generic_visit(node)
         self.current_class = None
-
 class Utils:
     @classmethod
     def limit_strings(cls, strings: str, n=1000) -> str:
-        """
-        Limit the number of strings to 1000
-        """
-        strings_list = strings.split("\n")
-        if len(strings_list) > n:
-            return "\n".join(strings_list[:n]) + "\n..." + f"({len(strings_list) - n} more lines)"
-        else:
-            return strings
-
+        sl = strings.split("\n")
+        return "\n".join(sl[:n]) + f"\n...({len(sl) - n} more lines)" if len(sl) > n else strings
     @classmethod
     def load_json(cls, json_string: str) -> dict:
         try:
@@ -904,22 +773,18 @@ class Utils:
                     return fixed_json
                 else:
                     raise JSONDecodeError("Invalid JSON", json_string, 0)
-
     @classmethod
     def log_to_failed_messages(cls, text_resp: str):
         with open("../failed_messages.csv", "a") as f:
             writer = csv.writer(f)
             writer.writerow([text_resp])
-
 class FixTaskEnhancedToolManager(EnhancedToolManager):
-
     def __init__(self, available_tools: Optional[list[str]] = [], test_runner: str = "pytest", test_runner_mode: str = "FILE"):
         self.new_files_created = []
         self.is_solution_approved = False
         self.test_runner = test_runner
         self.test_runner_mode = test_runner_mode
         self.generated_test_files = []
-
         for cls in self.__class__.__mro__:
             for name, attr in cls.__dict__.items():
                 if getattr(attr, "is_tool", False) and name not in self.TOOL_LIST:
@@ -936,14 +801,12 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             ast.parse(content, filename=file_path)
             return False, None
         except SyntaxError as e:
-
             return True, EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.SYNTAX_ERROR.name, f"Syntax error. {str(e)}")
 
     def _get_file_content(
         self, file_path: str, search_start_line: int = None, search_end_line: int = None, search_term: str = None, limit: int = 5000
     ) -> str:
         if search_term is not None and search_term != "":
-
             return self.search_in_specified_file_v2(file_path, search_term)
 
         func_ranges = self.get_function_ranges(file_path)
@@ -983,7 +846,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             search_term: optional text pattern to filter matching lines
         """
         return self._get_file_content(file_path, search_start_line, search_end_line, search_term, limit=5000)
-
     @EnhancedToolManager.tool
     def save_file(self, file_path: str, content: str) -> str:
         """
@@ -998,7 +860,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
                 f"Error: You cannot use this tool to create test or files to reproduce the error.",
             )
         return self._save(file_path, content)
-
     @EnhancedToolManager.tool
     def get_approval_for_solution(self, solutions: list[str], selected_solution: int, reason_for_selection: str) -> str:
         """
@@ -1009,7 +870,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             solutions: list of solutions proposed by you. Here each solution individually should be very detailed and then must explain why they are better than the other solutions.
             selected_solution: Index of the solution you think is the best.
             reason_for_selection: Reason for selecting the solution over other solutions.
-
         Output:
             approval: approved/not approved. If approved, you can go ahead and implement the solution.
         """
@@ -1038,7 +898,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             self.new_files_created.append(file_path)
             return f"File {file_path} saved successfully"
         else:
-
             error.message = "Error saving file. " + error.message
             raise EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.SYNTAX_ERROR.name, error.message)
 
@@ -1047,7 +906,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
         """
         Search for a text pattern across all .py files in the project, excluding any file with "test" in its path.
         Use at the beginning of the workflow to locate all possible references to a function, class, or variable.
-
         Arguments:
             search_term: text pattern to locate (e.g., "def test_function", "*SomeClass*")
             case_sensitive: flag to determine if the search should be case-sensitive
@@ -1114,7 +972,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
                 EnhancedToolManager.Error.ErrorType.SYNTAX_ERROR.name, f"Error parsing '{file_path}': {e}, {traceback.format_exc()}"
             )
             tree = None  # Fallback if file cannot be parsed.
-
         func_ranges: list[tuple[int, int, str]] = []  # (start, end, name)
         if tree is not None:
             for node in ast.walk(tree):
@@ -1135,7 +992,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             with open(file_path, "r", encoding="utf-8") as f:
                 source_lines = f.read().splitlines()
         except Exception as e:
-
             raise EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.FILE_NOT_FOUND.name, f"Error reading '{file_path}': {e}")
 
         # Identify all lines that contain the search term.
@@ -1152,7 +1008,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
                 if start <= line_no <= end:
                     return (start, end, name)
             return None
-
         functions_to_return: list[tuple[int, int, str]] = []
         standalone_lines: list[int] = []
         for ln in match_lines:
@@ -1187,7 +1042,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
                 EnhancedToolManager.Error.ErrorType.INVALID_FILE_PATH.name, f"Error: file '{file_path}' is not a python file."
             )
         return self._extract_function_matches(file_path, search_term)
-
     @EnhancedToolManager.tool
     def get_context_around_line(self, file_path: str, line_number: int, context_size: int = 5) -> str:
         """
@@ -1201,7 +1055,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
         """
         if not os.path.exists(file_path):
             raise EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.FILE_NOT_FOUND.name, f"Error: file '{file_path}' does not exist.")
-
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
@@ -1251,7 +1104,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             formatted list of files and directories with type and size
         """
         import glob
-
         # Validate path exists and is a directory
         if not os.path.exists(path):
             raise EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.FILE_NOT_FOUND.name, f"Error: directory '{path}' does not exist.")
@@ -1351,7 +1203,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
                     exclude.add(os.path.relpath(_p))
             except Exception:
                 pass
-
             # Discover modified + untracked files
             ls = subprocess.run(
                 ["git", "ls-files", "-m", "-o", "--exclude-standard"], capture_output=True, text=True, timeout=30, check=True
@@ -1385,7 +1236,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             raise EnhancedToolManager.Error(
                 EnhancedToolManager.Error.ErrorType.INVALID_FILE_PATH.name, f"Error: file '{file_path}' is not a python file."
             )
-
         # Ensure directory exists
         dir_name = os.path.dirname(file_path)
         if dir_name and not os.path.exists(dir_name):
@@ -1412,14 +1262,12 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
                     break
             lines = lines[:insert_idx] + (["", block, ""] if insert_idx < len(lines) else ["", block]) + lines[insert_idx:]
             return "\n".join(lines).rstrip() + "\n"
-
         def _insert_before_main(content: str, block: str) -> str:
             marker = 'if __name__ == "__main__":'
             idx = content.find(marker)
             if idx == -1:
                 return None
             return content[:idx].rstrip() + "\n\n" + block + "\n\n" + content[idx:]
-
         if is_new_file:
             new_content = test_fn + "\n"
             # Validate standalone content before writing
@@ -1500,7 +1348,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             Returns the stdout/stderr from the executed files.
         """
         if self.test_runner == "pytest":
-
             result = subprocess.run(["pytest"] + file_paths, shell=True, capture_output=True, text=True, timeout=90)
             output = (result.stdout or "") + (result.stderr or "")
         elif self.test_runner == "unittest":
@@ -1530,7 +1377,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
         """
         Runs any python code. You can use this tool directly to run any test code or bug reproduction code.
         Saves the code at the given file_path and then runs it. Do not use this tool to create test or files to reproduce the error unless user has specifically asked you to create test files as part of problem statement.
-
         Arguments:
             content: text code to write in file
             file_path: path of the file to save the code in. This file should always be in the current working directory.
@@ -1610,7 +1456,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
         file_path: target file for modification
         search: exact text pattern to locate and replace
         replace: new text content to substitute
-
         Output:
             operation status - success confirmation or detailed error with guidance
         """
@@ -1670,7 +1515,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
             return "finish"
         else:
             raise EnhancedToolManager.Error(EnhancedToolManager.Error.ErrorType.BUG_REPORT_REQUIRED.name, qa_response.get("analysis", ""))
-
     @EnhancedToolManager.tool
     def get_project_metadata(self):
         """
@@ -1680,7 +1524,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
         """
         try:
             metadata = {}
-
             config_files = {
                 "setup.py": self._parse_setup_py,
                 "pyproject.toml": self._parse_pyproject_toml,
@@ -1727,7 +1570,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
     def _parse_setup_py(self, filepath: str):
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
-
         data = {}
 
         patterns = {
@@ -1753,7 +1595,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
     def _parse_pyproject_toml(self, filepath: str):
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
-
         data = {}
 
         name_match = re.search(r'name\s*=\s*["\']([^"\']+)["\']', content)
@@ -1783,7 +1624,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
     def _parse_package_json(self, filepath: str):
         with open(filepath, "r", encoding="utf-8") as f:
             import json
-
             pkg = json.load(f)
 
         data = {}
@@ -1803,7 +1643,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
     def _parse_requirements_txt(self, filepath: str):
         with open(filepath, "r", encoding="utf-8") as f:
             lines = f.readlines()
-
         deps = []
         for line in lines:
             line = line.strip()
@@ -1815,7 +1654,6 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
     def _parse_setup_cfg(self, filepath: str):
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
-
         data = {}
 
         name_match = re.search(r"name\s*=\s*(.+)", content)
@@ -1828,170 +1666,293 @@ class FixTaskEnhancedToolManager(EnhancedToolManager):
 
         return data
 
-def ensure_git_initialized():
-    """Initialize git repository if not already initialized, with temporary config."""
-
-    work_dir = os.getcwd()
-    original_cwd = os.getcwd()
-
+def get_directory_tree(start_path: str = ".") -> str:
+    tree_lines = []
+    def add_tree(p, pre="", last=True, root=False):
+        try:
+            d = os.path.basename(p) if p != "." else os.path.basename(os.getcwd())
+            if not root:
+                tree_lines.append(f"{pre}{'└── ' if last else '├── '}{d}/")
+            try:
+                items = sorted([i for i in os.listdir(p) if not i.startswith(".")])
+                dirs = [i for i in items if os.path.isdir(os.path.join(p, i))]
+                files = [i for i in items if not os.path.isdir(os.path.join(p, i))]
+                for i, dn in enumerate(dirs):
+                    add_tree(os.path.join(p, dn), pre + ("" if root else ("    " if last else "│   ")), i == len(dirs) - 1 and len(files) == 0, False)
+                for i, fn in enumerate(files):
+                    tree_lines.append(f"{pre}{'' if root else ('    ' if last else '│   ')}{'└── ' if i == len(files) - 1 else '├── '}{fn}")
+            except PermissionError:
+                tree_lines.append(f"{pre}{'' if root else ('    ' if last else '│   ')}└── [Permission Denied]")
+        except Exception as e:
+            tree_lines.append(f"{pre}└── [Error: {str(e)}]")
+    add_tree(start_path, is_root=True)
+    return "\n".join(tree_lines)
+def find_readme(file_path: str, repo_path: str) -> Optional[str]:
+    d = os.path.dirname(file_path)
+    while True:
+        for n in ["README.md", "README.rst"]:
+            p = os.path.join(d, n)
+            if os.path.exists(p):
+                return p
+        if d == repo_path:
+            break
+        d = os.path.dirname(d)
+    return None
+def find_test_runner(readme_file_path: Optional[str] = None):
+    if not readme_file_path:
+        return "pytest"
     try:
-
-        os.chdir(work_dir)
-
-        # Initialize git repo if not already initialized
+        with open(readme_file_path, "r", encoding="utf-8") as f:
+            r = f.read()
+        p = textwrap.dedent("""You are a helpful assistant that can find the test runner for a given repository. The test runner is the file that can run individual test files (e.g. pytest, unittest). Read the README and find the test runner. If no test runner, return pytest. Output format: abc/test.py. No other texts.""")
+        return Network.make_request([{"role": "system", "content": p}, {"role": "user", "content": r}], model=DEEPSEEK_MODEL_NAME).strip() or "pytest"
+    except Exception:
+        return "pytest"
+def determine_test_runner_mode(test_runner: str):
+    if test_runner == "pytest":
+        return "FILE"
+    try:
+        with open(test_runner, "r", encoding="utf-8") as f:
+            c = f.read()
+        return Network.make_request([{"role": "system", "content": TEST_RUNNER_MODE_PROMPT}, {"role": "user", "content": c}], model=DEEPSEEK_MODEL_NAME).strip() or "FILE"
+    except Exception:
+        return "FILE"
+def count_test_cases(file_path: str) -> int:
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return len(re.findall(r"^\s*def\s+test_\w+", f.read(), re.MULTILINE))
+    except (FileNotFoundError, UnicodeDecodeError):
+        return 0
+def determine_test_runner_and_mode():
+    test_files = sorted([os.path.join(r, f) for r, _, fs in os.walk(".") for f in fs if "test_" in f and f.endswith(".py")], key=len)
+    for p in test_files:
+        if count_test_cases(p) > 5:
+            r = find_readme(p, ".")
+            if r:
+                tr = find_test_runner(r)
+                return tr, determine_test_runner_mode(tr)
+            break
+    return "pytest", "FILE"
+def convert_filepath_to_module(file_path: str, repo_path: str, test_runner: str) -> str:
+    mp = os.path.splitext(os.path.abspath(file_path))[0]
+    rp = os.path.abspath(repo_path)
+    if mp.startswith(rp):
+        mp = mp[len(rp):].lstrip(os.path.sep)
+    trd = os.path.dirname(test_runner)
+    if trd and mp.startswith(trd):
+        mp = mp[len(trd):].lstrip(os.path.sep)
+    return mp.replace(os.path.sep, ".")
+def purge_filepath(file_path: str, repo_path: str, test_runner: str) -> str:
+    mp = os.path.splitext(os.path.abspath(file_path))[0]
+    rp = os.path.abspath(repo_path)
+    if mp.startswith(rp):
+        mp = mp[len(rp):].lstrip(os.path.sep)
+    trd = os.path.dirname(test_runner)
+    if trd and mp.startswith(trd):
+        mp = mp[len(trd):].lstrip(os.path.sep)
+    return mp
+def fix_task_solve_workflow(
+    problem_statement: str,
+    *,
+    timeout: int,
+    run_id_1: str,
+    test_runner: str = "pytest",
+    test_runner_mode: str = "FILE",
+    n_max_steps=MAX_FIX_TASK_STEPS,
+    enable_pev: bool = True,
+    enable_mcts: bool = True,
+    extra_fix_request="",
+) -> str:
+    global run_id
+    run_id = run_id_1
+    try:
+        from framework_ext import AgentPlanExecuteVerifyWorkflow, PhaseManager
+        pev = AgentPlanExecuteVerifyWorkflow(enable_pev=enable_pev, enable_mcts=enable_mcts) if enable_pev or enable_mcts else None
+        s = pev.run_planning_phase(problem_statement) if pev else {"name": "Default", "description": "Standard approach"}
+        mp = pev.run_mcts_exploration(problem_statement) if pev and enable_mcts else []
+        strategy_guidance = f"\n\nStrategic Plan: {s.get('name', 'Default')} - {s.get('description', 'Standard approach')}"
+        mcts_guidance = f"\n\nMCTS Recommended Path: {' -> '.join(mp[:5])}" if mp else ""
+        pm = PhaseManager(problem_statement, n_max_steps)
+        use_multi_phase = pm.use_multi_phase_workflow()
+    except ImportError:
+        pev, pm = None, None
+        strategy_guidance = mcts_guidance = ""
+        class DummyPM:
+            def use_multi_phase_workflow(self): return False
+            def should_transition(self, *args): return False, None
+            def transition_to_phase(self, *args): pass
+            def get_phase_guidance(self): return ""
+            def create_checkpoint(self, *args): pass
+        pm = DummyPM()
+        use_multi_phase = False
+    try:
+        from create_tasks_ext import enhance_problem_statement
+        e = enhance_problem_statement(problem_statement)
+        enhanced_problem = problem_statement + "\n\n---\n\n# Enhanced Problem Analysis\n\n" + e if e else problem_statement
+    except ImportError:
+        enhanced_problem = problem_statement
+    phase_manager = pm
+    cot = EnhancedCOT(latest_observations_to_keep=30)
+    tool_manager = FixTaskEnhancedToolManager(
+        available_tools=["get_file_content", "save_file", "get_approval_for_solution", "search_in_all_files_content",
+            "search_in_specified_file_v2", "list_directory", "get_context_around_line", "run_repo_tests",
+            "run_code", "apply_code_edit", "generate_test_function", "get_project_metadata", "finish"],
+        test_runner=test_runner, test_runner_mode=test_runner_mode,
+    )
+    system_prompt = FIX_TASK_SYSTEM_PROMPT.format(
+        tools_docs=tool_manager.get_tool_docs(), format_prompt=FORMAT_PROMPT_V0, extra_fix_request=extra_fix_request
+    )
+    instance_prompt = FIX_TASK_INSTANCE_PROMPT_TEMPLATE.format(problem_statement=enhanced_problem) + strategy_guidance + mcts_guidance
+    start_time = time.time()
+    for step in range(n_max_steps):
+        if use_multi_phase and step > 0:
+            st, np = phase_manager.should_transition(step, cot)
+            if st:
+                phase_manager.transition_to_phase(np, step)
+        if time.time() - start_time > timeout:
+            cot.add_action(EnhancedCOT.Action(next_thought="global timeout reached", next_tool_name="", next_tool_args={}, observation="", is_error=True))
+            break
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}, {"role": "user", "content": instance_prompt}]
+        messages.extend(cot.to_str())
+        if use_multi_phase:
+            messages.append({"role": "system", "content": phase_manager.get_phase_guidance()})
+        messages.append({"role": "system", "content": STOP_INSTRUCTION})
+        temperature = 0
+        selected_model = GLM_MODEL_NAME
+        if cot.is_thought_repeated():
+            last_thought = cot.thoughts[-1]
+            messages.append({
+                "role": "user",
+                "content": DO_NOT_REPEAT_TOOL_CALLS.format(
+                    previous_response=f"next_tool_name:{last_thought.next_tool_name}\n next_tool_args:{last_thought.next_tool_args}"
+                ),
+            })
+            if cot.repeated_thoughts > 1:
+                temperature = min(cot.repeated_thoughts / 10, 0.7)
+                selected_model = AGENT_MODELS[random.randint(0, len(AGENT_MODELS) - 1)] if cot.repeated_thoughts > 2 else GLM_MODEL_NAME
+        try:
+            nt, ntn, nta, rt, ta, ec, msgs = Network.inference(messages, model=selected_model, run_id=run_id, temperature=temperature)
+            next_thought, next_tool_name, next_tool_args, raw_text, total_attempts, error_counter = nt, ntn, nta, rt, ta, ec
+            messages = msgs
+        except Exception as e:
+            em = f"\n\nERROR: {repr(e)} {traceback.format_exc()}"
+            if "too long context" in em:
+                cot.clear_and_restart()
+            cot.add_action(EnhancedCOT.Action(next_thought=em, next_tool_name="", next_tool_args={}, observation="", is_error=True, raw_response="", total_attempts=0, inference_error_counter={}, request_data=messages))
+            break
+        try:
+            if '"' in next_tool_name or "'" in next_tool_name:
+                next_tool_name = next_tool_name.replace('"', "").replace("'", "")
+            no = tool_manager.get_tool(next_tool_name)(**next_tool_args) if next_tool_args else tool_manager.get_tool(next_tool_name)()
+            cot.add_action(EnhancedCOT.Action(next_thought=next_thought, next_tool_name=next_tool_name, next_tool_args=next_tool_args, observation=no, is_error=False, raw_response=raw_text, total_attempts=total_attempts, inference_error_counter=error_counter, request_data=messages))
+            if use_multi_phase and next_tool_name in ["run_repo_tests", "apply_code_edit", "get_approval_for_solution"]:
+                if "passed" in str(no).lower() or "failed" in str(no).lower():
+                    phase_manager.create_checkpoint(step, {"observation": str(no)[:200]})
+            if enable_pev and enable_mcts and pev and pev.mcts:
+                pev.mcts.update_root(next_tool_name, str(no), "error" not in str(no).lower())
+        except EnhancedToolManager.Error as e:
+            em = f"observation: {e.message}"
+            cot.add_action(EnhancedCOT.Action(next_thought=next_thought, next_tool_name=next_tool_name, next_tool_args=next_tool_args, observation=em, is_error=True, raw_response=raw_text, total_attempts=total_attempts, inference_error_counter=error_counter, request_data=messages))
+            if enable_pev and enable_mcts and pev and pev.mcts:
+                pev.mcts.update_root(next_tool_name, em, False)
+            continue
+        except Exception as e:
+            et = traceback.format_exc()
+            em = f"observation: {str(e)}" if isinstance(e, TypeError) else f"observation: {repr(e)} {et}"
+            cot.add_action(EnhancedCOT.Action(next_thought=next_thought, next_tool_name=next_tool_name, next_tool_args=next_tool_args, observation=em, is_error=True, raw_response=raw_text, total_attempts=total_attempts, inference_error_counter=error_counter, request_data=messages))
+            if enable_pev and enable_mcts and pev and pev.mcts:
+                pev.mcts.update_root(next_tool_name, em, False)
+            continue
+        if next_tool_name == "finish":
+            break
+    else:
+        cot.add_action(EnhancedCOT.Action(next_thought="global timeout reached", next_tool_name="", next_tool_args={}, observation="", is_error=True))
+        if n_max_steps < MAX_FIX_TASK_STEPS:
+            return ""
+    patch = tool_manager.get_final_git_patch()
+    return patch
+def ensure_git_initialized():
+    wd = os.getcwd()
+    try:
+        os.chdir(wd)
         if not os.path.exists(".git"):
-
             subprocess.run(["git", "init"], check=True)
-            subprocess.run(["git", "config", "--global", "--add", "safe.directory", work_dir])
-
+            subprocess.run(["git", "config", "--global", "--add", "safe.directory", wd])
             subprocess.run(["git", "config", "--global", "user.email", "agent@sandbox.local"], check=True)
             subprocess.run(["git", "config", "--global", "user.name", "sandbox_agent"], check=True)
             subprocess.run(["git", "add", "."], check=True)
-
-            result = subprocess.run(["git", "commit", "-m", "Initial commit"], check=False, capture_output=True, text=True)
-
+            subprocess.run(["git", "commit", "-m", "Initial commit"], check=False, capture_output=True, text=True)
         else:
-
-            subprocess.run(["git", "config", "--global", "--add", "safe.directory", work_dir])
-
-    except Exception as e:
+            subprocess.run(["git", "config", "--global", "--add", "safe.directory", wd])
+    except Exception:
         pass
-
     finally:
-        os.chdir(original_cwd)
-
+        os.chdir(wd)
 def set_env_for_agent():
-
-    if os.getcwd() not in os.environ.get("PYTHONPATH", ""):
-        os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + ":" + os.getcwd()
-    if Path(os.getcwd() + "/lib").exists() and os.getcwd() + "/lib" not in os.environ.get("PYTHONPATH", ""):
-        os.environ["PYTHONPATH"] = os.environ["PYTHONPATH"] + ":" + os.getcwd() + "/lib"
-
+    cwd = os.getcwd()
+    pypath = os.environ.get("PYTHONPATH", "")
+    if cwd not in pypath:
+        os.environ["PYTHONPATH"] = pypath + ":" + cwd
+    lib = cwd + "/lib"
+    if Path(lib).exists() and lib not in pypath:
+        os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + ":" + lib
 def process_fix_task(input_dict: Dict[str, Any], enable_pev: bool = True, enable_mcts: bool = True):
-    """Main entry point for task processing and code modification.
-
-    Parameters
-    ----------
-    input_dict : dict
-        Configuration dictionary containing the task specification.
-        Required key: 'problem_statement' with task details.
-        Optional keys: 'run_id', 'instance_id' for tracking purposes.
-    enable_pev : bool
-        Enable Plan-Execute-Verify workflow
-    enable_mcts : bool
-        Enable Monte Carlo Tree Search
-    """
     global run_id
-    # setting environment to include current working directory and lib directory
     problem_text = input_dict.get("problem_statement")
     if not problem_text:
         raise ValueError("input_dict must contain 'problem_statement'.")
     timeout = int(os.getenv("AGENT_TIMEOUT", str(DEFAULT_TIMEOUT)))
-
-    logs = []
-    patch_text = ""  # Initialize to avoid UnboundLocalError
-
+    patch_text = ""
     repo_path = os.getenv("REPO_PATH", "/sandbox/repo")
     repod_dir = repo_path.split("/")[-1]
-    repod_path = repo_path[: -len(repod_dir) - 1]
     if os.path.exists(repod_dir):
         os.chdir(repod_dir)
-
     set_env_for_agent()
     cwd = os.getcwd()
-
-    test_runner, test_runner_mode = determine_test_runner_and_mode()
-
+    tr, trm = determine_test_runner_and_mode()
     try:
-        patch_text = fix_task_solve_workflow(
-            problem_text,
-            timeout=timeout,
-            run_id_1=run_id,
-            test_runner=test_runner,
-            test_runner_mode=test_runner_mode,
-            enable_pev=enable_pev,
-            enable_mcts=enable_mcts,
-            extra_fix_request=FIX_TASK_NEVER_EARLY_STOP_PROMPT,
-        )
-
+        patch_text = fix_task_solve_workflow(problem_text, timeout=timeout, run_id_1=run_id, test_runner=tr, test_runner_mode=trm, enable_pev=enable_pev, enable_mcts=enable_mcts, extra_fix_request=FIX_TASK_NEVER_EARLY_STOP_PROMPT)
         os.system("git reset --hard")
-
-    except Exception as e:
-        import traceback  # Ensure traceback is accessible
-
-        error_info = f"Error: {e}, {traceback.format_exc()}"
-
-        logs.append(error_info)
+    except Exception:
+        pass
     finally:
         os.chdir(cwd)
-
     return patch_text
-
 def check_problem_type(problem_statement: str) -> str:
-    PROBLEM_TYPE_CHECK_PROMPT = textwrap.dedent(
-        """
-        You are the problem type checker that will categories problem type into:
-        
-        1. CREATE: If the problem statement is about creating a new functionality from scratch.
-        2. FIX: If the problem statement is about fixing a bug, creating a new functionality or improving the existing codebase.
-        
-        Only respond with the "FIX" or "CREATE".
-        """
-    )
+    p = textwrap.dedent("""You are the problem type checker. Categories: 1. CREATE: new functionality from scratch. 2. FIX: fixing bug, improving existing codebase. Only respond with "FIX" or "CREATE".""")
     retry = 0
     while retry < 10:
         try:
-            messages = [
-                {"role": "system", "content": PROBLEM_TYPE_CHECK_PROMPT},
-                {"role": "user", "content": f"{problem_statement}\n# Project Tree Structure: \n{get_directory_tree()}"},
-            ]
-
-            response = Network.make_request(messages, model=QWEN_MODEL_NAME)
-
-            if response not in [PROBLEM_TYPE_CREATE, PROBLEM_TYPE_FIX]:
+            msgs = [{"role": "system", "content": p}, {"role": "user", "content": f"{problem_statement}\n# Project Tree Structure: \n{get_directory_tree()}"}]
+            r = Network.make_request(msgs, model=QWEN_MODEL_NAME)
+            if r not in [PROBLEM_TYPE_CREATE, PROBLEM_TYPE_FIX]:
                 retry += 1
             else:
                 break
-        except Exception as e:
-
+        except Exception:
             retry += 1
-
         time.sleep(2)
-
-    return response
-
-def agent_main(input_dict: Dict[str, Any], repo_dir: str = "repo", enable_pev: bool = True, enable_mcts: bool = True):
-    """Legacy interface wrapper for backwards compatibility."""
+    return r
+def agent_main(input_dict: Dict[str, Any], repo_dir: str = "repo", enable_pev: bool = True, enable_mcts: bool = True) -> Dict[str, str]:
     global DEFAULT_PROXY_URL, DEFAULT_TIMEOUT, run_id
     run_id = os.getenv("RUN_ID", "")
     repo_dir = os.path.abspath(repo_dir)
-
     sys.path.insert(0, repo_dir)
-
     if os.path.exists(repo_dir):
         os.chdir(repo_dir)
-
     ensure_git_initialized()
-
     set_env_for_agent()
-
     try:
-        problem_type = check_problem_type(input_dict.get("problem_statement"))
-
-        if problem_type == PROBLEM_TYPE_FIX:
+        pt = check_problem_type(input_dict.get("problem_statement"))
+        if pt == PROBLEM_TYPE_FIX:
             result = process_fix_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
         else:
-            # Try to import CREATE task handler from extracted module
             try:
                 from create_tasks_ext import process_create_task
                 result = process_create_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
             except ImportError:
-                # Fallback to FIX task handling if CREATE module not available
                 result = process_fix_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
-    except Exception as e:
-        # Default fallback: treat as FIX task
+    except Exception:
         result = process_fix_task(input_dict, enable_pev=enable_pev, enable_mcts=enable_mcts)
-
     os.system("git reset --hard")
-
-    return result
+    return {"patch": result if result else ""}
