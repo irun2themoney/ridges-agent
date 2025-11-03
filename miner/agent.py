@@ -1921,18 +1921,18 @@ def process_fix_task(input_dict: Dict[str, Any], enable_pev: bool = True, enable
 def check_problem_type(problem_statement: str) -> str:
     p = textwrap.dedent("""You are the problem type checker. Categories: 1. CREATE: new functionality from scratch. 2. FIX: fixing bug, improving existing codebase. Only respond with "FIX" or "CREATE".""")
     retry = 0
+    r = PROBLEM_TYPE_FIX  # Default to FIX if all retries fail
     while retry < 10:
         try:
             msgs = [{"role": "system", "content": p}, {"role": "user", "content": f"{problem_statement}\n# Project Tree Structure: \n{get_directory_tree()}"}]
             r = Network.make_request(msgs, model=QWEN_MODEL_NAME)
-            if r not in [PROBLEM_TYPE_CREATE, PROBLEM_TYPE_FIX]:
-                retry += 1
-            else:
+            if r and r in [PROBLEM_TYPE_CREATE, PROBLEM_TYPE_FIX]:
                 break
+            retry += 1
         except Exception:
             retry += 1
         time.sleep(2)
-    return r
+    return r if r and r in [PROBLEM_TYPE_CREATE, PROBLEM_TYPE_FIX] else PROBLEM_TYPE_FIX
 def agent_main(input_dict: Dict[str, Any], repo_dir: str = "repo", enable_pev: bool = True, enable_mcts: bool = True) -> Dict[str, str]:
     global DEFAULT_PROXY_URL, DEFAULT_TIMEOUT, run_id
     run_id = os.getenv("RUN_ID", "")
